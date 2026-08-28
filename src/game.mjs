@@ -1,4 +1,4 @@
-export const VERSION = 19;
+export const VERSION = 21;
 export const SAVE_KEY = 'goodnight-next-stop.run.v7';
 export const DIFFICULTIES = {
   relaxed: { name: '舒缓', hp: 1, damage: 1, reward: 1 },
@@ -161,6 +161,26 @@ export const CHECKPOINTS = {
 export const SEGMENT_NAMES = ['入梦浅滩', '回声小径', '失序深处', '梦核外环', '终夜核心'];
 export const STARTER = ['slash', 'slash', 'slash', 'slash', 'guard', 'guard', 'guard', 'mark', 'heavy', 'focus'];
 export const REWARDS = ['riposte', 'leech', 'quick', 'nova', 'fortify', 'echo', 'mend', 'risk', 'tea', 'listen', 'postcard', 'blanket', 'nightRide', 'kitchenLight', 'unsent', 'photoAlbum', 'morningCall', 'stayAwhile', 'lucidDoor', 'goodnight'];
+export const CHARACTERS = {
+  uncle: {
+    name: '大叔', role: '夜班店长', trait: '认真听你说',
+    description: '每回合首次发现弱点时，额外抽 1 张牌。',
+    schools: ['倾听', '书信'], style: '观察弱点，再连续出牌',
+    starter: ['slash', 'slash', 'slash', 'guard', 'guard', 'mark', 'mark', 'heavy', 'quick', 'focus'],
+  },
+  gaigai: {
+    name: '该该', role: '随车料理师', trait: '还有一杯热的',
+    description: '超过生命上限的治疗会变成暖意，下一张攻击牌造成等量额外伤害。',
+    schools: ['料理', '陪伴'], style: '边恢复边积攒爆发', recommended: true,
+    starter: ['slash', 'slash', 'slash', 'guard', 'guard', 'leech', 'mend', 'tea', 'riposte', 'focus'],
+  },
+  xiaoshuai: {
+    name: '小帅', role: '梦境修补师', trait: '缝好裂缝',
+    description: '回合结束后保留一半护盾，护盾抵挡伤害时反击一半。',
+    schools: ['陪伴', '清醒梦'], style: '叠加护盾，稳步反击',
+    starter: ['slash', 'slash', 'slash', 'guard', 'guard', 'guard', 'riposte', 'riposte', 'fortify', 'focus'],
+  },
+};
 export const ITEMS = {
   wornBlade: { name: '旧钢笔', slot: 'weapon', rarity: '普通', attack: 1, flavor: '写过许多入住登记，也听过许多故事。' },
   silverBlade: { name: '银边笔记本', slot: 'bag', rarity: '精良', attack: 3, flavor: '每一页都留着不同城市的气味。' },
@@ -290,7 +310,9 @@ function rollItem(s, base, boosted = false) {
   const rarity = RARITIES[rarityIndex];
   const affixes = rollAffixes(s, rarity.affixes);
   const skillChance = rarityIndex === 3 ? 1 : rarityIndex === 2 ? .35 : 0;
-  const skill = ITEMS[base].skill || (random(s) < skillChance ? REWARDS[Math.floor(random(s) * REWARDS.length)] : null);
+  const preferred = REWARDS.filter(key => CHARACTERS[s.character]?.schools.includes(CARDS[key].school));
+  const skillPool = preferred.length && random(s) < .7 ? preferred : REWARDS;
+  const skill = ITEMS[base].skill || (random(s) < skillChance ? skillPool[Math.floor(random(s) * skillPool.length)] : null);
   return { id: `gear-${s.nextItemId++}`, base, rarity: rarity.name, affixes, skill };
 }
 function storyItem(s, stage) {
@@ -341,10 +363,14 @@ export function buildChapterMap(chapter = 0, mapSeed = chapter + 1) {
 export const MAP_NODES = buildChapterMap(0);
 export function chapterMap(chapter, mapSeed) { return buildChapterMap(chapter, mapSeed); }
 export function card(key) {
-  const upgraded = key.endsWith('+');
-  const base = CARDS[key.replace('+', '')];
+  const equipmentGranted = key.endsWith('~gear');
+  const normalized = equipmentGranted ? key.slice(0, -5) : key;
+  const upgraded = normalized.endsWith('+');
+  const baseKey = normalized.replace('+', '');
+  const base = CARDS[baseKey];
   if (!base) throw new Error('Unknown card');
-  const c = { ...base, key, upgraded };
+  const c = { ...base, key, baseKey, upgraded, equipmentGranted };
+  if (equipmentGranted) c.cost = 0;
   if (upgraded) {
     c.name += ' +';
     if (c.damage) c.damage += 3;
@@ -389,8 +415,9 @@ function log(s, text) {
 function logBattleStatus(s) {
   const foe = enemyFor(s);
   const playerGuard = s.block > 0 ? ` · 护盾 ${s.block}` : '';
+  const warmth = s.character === 'gaigai' && s.warmth > 0 ? ` · 暖意 ${s.warmth}` : '';
   const enemyGuard = s.enemy.block > 0 ? ` · 护盾 ${s.enemy.block}` : '';
-  log(s, `状态：你 ${s.hp}/${s.maxHp} 生命${playerGuard}｜${foe.name} ${s.enemy.hp}/${s.enemy.maxHp} 生命${enemyGuard}`);
+  log(s, `状态：你 ${s.hp}/${s.maxHp} 生命${playerGuard}${warmth}｜${foe.name} ${s.enemy.hp}/${s.enemy.maxHp} 生命${enemyGuard}`);
 }
 function draw(s, count) {
   for (let i = 0; i < count && s.hand.length < 9; i++) {
@@ -421,7 +448,7 @@ export function attackPreview(s, key) {
   const stats = equipmentStats(s);
   const baseDamage = c.damage + stats.attack + (s.played === 0 ? stats.firstStrike : 0);
   const base = s.weak > 0 ? Math.floor(baseDamage * .75) : baseDamage;
-  return base * (c.hits || 1) + s.enemy.mark * 3;
+  return base * (c.hits || 1) + s.enemy.mark * 3 + (s.character === 'gaigai' ? s.warmth || 0 : 0);
 }
 export function equipmentStats(s) {
   const equipped = s?.equipment || {};
@@ -439,6 +466,7 @@ export function equipmentStats(s) {
 }
 function beginBattle(s) {
   s.phase = 'combat'; s.turn = 1; s.energy = 3; s.weak = 0;
+  s.warmth = 0; s.traitUsed = false;
   s.battleLog = [];
   s.block = (s.relic ? 2 : 0) + equipmentStats(s).block;
   const depthScale = 1 + Math.max(0, s.mapRow) * .018;
@@ -446,7 +474,7 @@ function beginBattle(s) {
   const foe = enemyFor(s);
   const maxHp = Math.round(foe.hp * depthScale * rankScale * (DIFFICULTIES[s.difficulty]?.hp || 1.3));
   s.enemy = { hp: maxHp, maxHp, block: 0, mark: 0 };
-  const grantedCards = Object.values(s.equipment).map(id => itemFor(s, id)?.skill).filter(Boolean);
+  const grantedCards = Object.values(s.equipment).map(id => itemFor(s, id)?.skill).filter(Boolean).map(skill => `${skill}~gear`);
   s.draw = shuffle(s, [...s.deck, ...grantedCards]); s.hand = []; s.discard = []; s.exhaust = [];
   s.choices = [];
   draw(s, 5);
@@ -454,13 +482,14 @@ function beginBattle(s) {
   log(s, '第 1 回合开始，能量恢复至 3。');
   logBattleStatus(s);
 }
-export function newRun(seed = Date.now() >>> 0, battleMode = 'auto', difficulty = 'standard') {
+export function newRun(seed = Date.now() >>> 0, battleMode = 'auto', difficulty = 'standard', character = 'uncle') {
   const inventory = [
     { id: 'gear-1', base: 'wornBlade', rarity: '普通', affixes: [], skill: null },
     { id: 'gear-2', base: 'travelCoat', rarity: '普通', affixes: [], skill: null },
   ];
   const selectedDifficulty = DIFFICULTIES[difficulty] ? difficulty : 'standard';
-  const s = { version: VERSION, seed: seed >>> 0, mapSeed: seed >>> 0, difficulty: selectedDifficulty, battleMode: battleMode === 'manual' ? 'manual' : 'auto', tutorialDone: false, phase: 'hub', stage: 0, unlocked: 0, clears: [0, 0, 0, 0, 0, 0], guestRewards: [false, false, false, false, false, false], level: 1, xp: 0, nextXp: 45, hp: 70, maxHp: 70, gold: 0, facilities: { kitchen: 0, workshop: 0, rooms: 0 }, commissionClaims: { battles: 0, steps: 0, stories: 0 }, stepsTraveled: 0, relic: false, elite: false, bossFight: false, foe: 0, checkpointRow: -1, inventory, equipment: { weapon: 'gear-1', armor: 'gear-2', bag: null, scarf: null, charm: null, decor: null }, nextItemId: 3, lastLoot: null, deck: [...STARTER], log: [], battleLog: [], played: 0, totalTurns: 0, victories: 0, mapRow: -1, currentNode: null, visited: [] };
+  const selectedCharacter = CHARACTERS[character] ? character : 'uncle';
+  const s = { version: VERSION, seed: seed >>> 0, mapSeed: seed >>> 0, character: selectedCharacter, warmth: 0, traitUsed: false, difficulty: selectedDifficulty, battleMode: battleMode === 'manual' ? 'manual' : 'auto', tutorialDone: false, phase: 'hub', stage: 0, unlocked: 0, clears: [0, 0, 0, 0, 0, 0], guestRewards: [false, false, false, false, false, false], level: 1, xp: 0, nextXp: 45, hp: 70, maxHp: 70, gold: 0, facilities: { kitchen: 0, workshop: 0, rooms: 0 }, commissionClaims: { battles: 0, steps: 0, stories: 0 }, stepsTraveled: 0, relic: false, elite: false, bossFight: false, foe: 0, checkpointRow: -1, inventory, equipment: { weapon: 'gear-1', armor: 'gear-2', bag: null, scarf: null, charm: null, decor: null }, nextItemId: 3, lastLoot: null, deck: [...CHARACTERS[selectedCharacter].starter], log: [], battleLog: [], played: 0, totalTurns: 0, victories: 0, mapRow: -1, currentNode: null, visited: [] };
   s.turn = 1; s.energy = 3; s.block = 0; s.weak = 0; s.enemy = { hp: 0, maxHp: 0, block: 0, mark: 0 };
   s.draw = []; s.hand = []; s.discard = []; s.exhaust = []; s.choices = [];
   log(s, '房车在花田边停稳，第一盏夜灯已经亮起。');
@@ -510,7 +539,9 @@ function victory(s) {
   s.inventory.unshift(dropped);
   s.lastLoot = dropped.id;
   s.phase = 'reward';
-  s.choices = shuffle(s, REWARDS).slice(0, 3);
+  const preferred = REWARDS.filter(key => CHARACTERS[s.character].schools.includes(CARDS[key].school));
+  const others = REWARDS.filter(key => !preferred.includes(key));
+  s.choices = [...shuffle(s, preferred).slice(0, 2), ...shuffle(s, others).slice(0, 1)];
   log(s, `击败${foe.name}，获得 ${xpGain} 点经验。`);
   if (levels) log(s, `店主升至 ${s.level} 级，生命上限提高。`);
   log(s, `获得${dropped.rarity}装备「${itemName(dropped)}」。`);
@@ -615,16 +646,31 @@ export function transition(state, action) {
     if (c.cost > s.energy) return state;
     s.hand.splice(action.index, 1); s.energy -= c.cost; s.played++;
     if (c.block) s.block += c.block;
-    if (c.mark) s.enemy.mark += c.mark;
+    let traitTriggered = false;
+    if (c.mark) {
+      s.enemy.mark += c.mark;
+      if (s.character === 'uncle' && !s.traitUsed) {
+        s.traitUsed = true;
+        traitTriggered = true;
+        draw(s, 1);
+      }
+    }
     if (c.energy) s.energy += c.energy;
-    if (c.heal) s.hp = Math.min(s.maxHp, s.hp + c.heal);
+    const missingHp = s.maxHp - s.hp;
+    const healed = c.heal ? Math.min(c.heal, missingHp) : 0;
+    const overheal = c.heal ? Math.max(0, c.heal - healed) : 0;
+    if (c.heal) {
+      s.hp += healed;
+      if (s.character === 'gaigai' && overheal) s.warmth = Math.min(12, s.warmth + overheal);
+    }
     if (c.self) s.hp = Math.max(0, s.hp - c.self);
     let damage = 0;
+    const warmthBonus = c.damage && s.character === 'gaigai' ? s.warmth : 0;
     if (c.damage) {
       for (let i = 0; i < (c.hits || 1); i++) {
         const stats = equipmentStats(s);
         const equippedDamage = c.damage + stats.attack + (s.played === 1 ? stats.firstStrike : 0);
-        const amount = (s.weak > 0 ? Math.floor(equippedDamage * .75) : equippedDamage) + s.enemy.mark * 3;
+        const amount = (s.weak > 0 ? Math.floor(equippedDamage * .75) : equippedDamage) + s.enemy.mark * 3 + (i === 0 ? warmthBonus : 0);
         s.enemy.mark = 0;
         const absorbed = Math.min(s.enemy.block, amount);
         s.enemy.block -= absorbed;
@@ -635,8 +681,10 @@ export function transition(state, action) {
     const effects = [];
     if (c.damage) effects.push(`造成 ${damage} 点伤害`);
     if (c.block) effects.push(`获得 ${c.block} 点护盾`);
-    if (c.mark) effects.push(`发现 ${c.mark} 层弱点`);
-    if (c.heal) effects.push(`回复 ${Math.min(c.heal, state.maxHp - state.hp)} 点生命`);
+    if (c.mark) effects.push(`发现 ${c.mark} 层弱点${traitTriggered ? '，触发特性抽 1 张牌' : ''}`);
+    if (c.heal) effects.push(`回复 ${healed} 点生命`);
+    if (overheal && s.character === 'gaigai') effects.push(`积攒 ${overheal} 点暖意`);
+    if (warmthBonus) { effects.push(`消耗暖意追加 ${warmthBonus} 点伤害`); s.warmth = 0; }
     if (c.energy) effects.push(`恢复 ${c.energy} 点能量`);
     if (c.draw) effects.push(`抽取 ${c.draw} 张牌`);
     if (c.self) effects.push(`消耗 ${c.self} 点生命`);
@@ -661,18 +709,26 @@ export function transition(state, action) {
       log(s, `${foe.name}获得 ${move.value} 点护盾。`);
     } else {
       let damage = 0;
+      let absorbedTotal = 0;
       for (let i = 0; i < (move.hits || 1); i++) {
         const absorbed = Math.min(s.block, move.value);
-        s.block -= absorbed; damage += move.value - absorbed;
+        s.block -= absorbed; damage += move.value - absorbed; absorbedTotal += absorbed;
       }
       s.hp = Math.max(0, s.hp - damage);
       log(s, `${foe.name}造成 ${damage} 点伤害。`);
+      if (s.character === 'xiaoshuai' && absorbedTotal > 0) {
+        const reflected = Math.ceil(absorbedTotal * .5);
+        s.enemy.hp = Math.max(0, s.enemy.hp - reflected);
+        log(s, `小帅用护盾反击，造成 ${reflected} 点伤害。`);
+      }
       if (move.kind === 'curse') { s.weak = 1; log(s, '你陷入动摇，下回合共鸣效果降低 25%。'); }
     }
     logBattleStatus(s);
     s.totalTurns++;
     if (s.hp <= 0) { s.phase = 'lost'; log(s, '旅途暂止于此。'); return s; }
-    s.turn++; s.energy = 3; s.block = (s.relic ? 2 : 0) + equipmentStats(s).block;
+    if (s.enemy.hp <= 0) { victory(s); return s; }
+    const retainedBlock = s.character === 'xiaoshuai' ? Math.floor(s.block * .5) : 0;
+    s.turn++; s.energy = 3; s.traitUsed = false; s.block = retainedBlock + (s.relic ? 2 : 0) + equipmentStats(s).block;
     draw(s, Math.max(0, 5 - s.hand.length)); log(s, `第 ${s.turn} 回合开始，能量恢复至 3。`);
     return s;
   }
@@ -819,11 +875,28 @@ export function restore(raw) {
         if (slot && migrated[slot] === null) migrated[slot] = id;
       }
       s.equipment = migrated;
+      s.version = 19;
+    }
+    if (s?.version === 19) {
+      if (s.phase === 'combat') {
+        const battlePiles = [s.hand, s.draw, s.discard, s.exhaust];
+        const equippedSkills = Object.values(s.equipment || {}).map(id => itemFor(s, id)?.skill).filter(Boolean);
+        for (const skill of equippedSkills) {
+          const pile = battlePiles.find(cards => cards?.includes(skill));
+          if (pile) pile[pile.indexOf(skill)] = `${skill}~gear`;
+        }
+      }
+      s.version = 20;
+    }
+    if (s?.version === 20) {
+      s.character = 'uncle';
+      s.warmth = 0;
+      s.traitUsed = false;
       s.version = VERSION;
     }
     const int = (n, min, max) => Number.isInteger(n) && n >= min && n <= max;
-    const validCards = a => Array.isArray(a) && a.length <= 300 && a.every(k => typeof k === 'string' && /^[a-zA-Z]+\+?$/.test(k) && CARDS[k.replace('+', '')]);
-    if (!s || s.version !== VERSION || typeof s.tutorialDone !== 'boolean' || !DIFFICULTIES[s.difficulty] || !['auto', 'manual'].includes(s.battleMode) || !['hub', 'map', 'combat', 'reward', 'camp', 'checkpoint', 'event', 'lost'].includes(s.phase)) return null;
+    const validCards = a => Array.isArray(a) && a.length <= 300 && a.every(k => typeof k === 'string' && /^[a-zA-Z]+\+?(?:~gear)?$/.test(k) && CARDS[k.replace('~gear', '').replace('+', '')]);
+    if (!s || s.version !== VERSION || typeof s.tutorialDone !== 'boolean' || !CHARACTERS[s.character] || !int(s.warmth, 0, 12) || typeof s.traitUsed !== 'boolean' || !DIFFICULTIES[s.difficulty] || !['auto', 'manual'].includes(s.battleMode) || !['hub', 'map', 'combat', 'reward', 'camp', 'checkpoint', 'event', 'lost'].includes(s.phase)) return null;
     if (!int(s.stage, 0, ENEMIES.length - 1) || !int(s.level, 1, 100) || !int(s.xp, 0, 10000) || !int(s.nextXp, 1, 10000)) return null;
     if (!int(s.unlocked, 0, ENEMIES.length - 1) || !Array.isArray(s.clears) || s.clears.length !== ENEMIES.length || !s.clears.every(n => int(n, 0, 10000))) return null;
     if (!s.facilities || !['kitchen', 'workshop', 'rooms'].every(key => int(s.facilities[key], 0, 3))) return null;

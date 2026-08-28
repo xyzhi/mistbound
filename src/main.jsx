@@ -6,7 +6,7 @@ import {
   Sparkles, Swords, Target, TentTree, TrendingUp, Wind, Wrench, X,
 } from 'lucide-react';
 import {
-  CHECKPOINTS, CHECKPOINT_STEPS, CHAPTER_LOOT, CHAPTERS, DIFFICULTIES, ENEMIES, GUESTS, ITEMS, SAVE_KEY, SEGMENT_NAMES, SLOT_LABELS, attackPreview, card,
+  CHARACTERS, CHECKPOINTS, CHECKPOINT_STEPS, CHAPTER_LOOT, CHAPTERS, DIFFICULTIES, ENEMIES, GUESTS, ITEMS, SAVE_KEY, SEGMENT_NAMES, SLOT_LABELS, attackPreview, card,
   chapterMap, chooseAutoCard, commissionStatus, description, enemyFor, equipmentStats, facilityCost, intent, itemFor, itemLines, MAP_STEPS,
   itemName, itemScore, newRun, rerollCost, restore, salvageValue, serialize, transition,
 } from './game.mjs';
@@ -27,10 +27,18 @@ import enemiesTerminal from './assets/pixel/runtime/enemies-terminal.webp';
 import dreamCreatures from './assets/pixel/runtime/dream-creatures.webp';
 import equipmentAtlas from './assets/pixel/runtime/equipment-atlas.webp';
 import skillAtlas from './assets/pixel/runtime/skill-atlas.webp';
+import characterAtlas from './assets/pixel/runtime/character-atlas.webp';
 
 const PIXEL_BACKGROUNDS = [chapter0, chapter1, chapter2, chapter3, chapter4, chapter5];
 const PIXEL_ENEMIES = [enemiesFlower, enemiesRain, enemiesBooks, enemiesCoast, enemiesMarket, enemiesTerminal];
 const CARD_KEYS = ['slash', 'guard', 'mark', 'heavy', 'focus', 'riposte', 'leech', 'quick', 'nova', 'fortify', 'echo', 'mend', 'risk', 'tea', 'listen', 'postcard', 'blanket', 'nightRide', 'kitchenLight', 'unsent', 'photoAlbum', 'morningCall', 'stayAwhile', 'lucidDoor', 'goodnight'];
+const BATTLE_SPEED_KEY = 'mistbound-battle-speed';
+const CHARACTER_KEYS = Object.keys(CHARACTERS);
+const CHARACTER_LINES = {
+  uncle: { victory: '今晚的故事，我认真听完了。', defeat: '先回车里坐坐，故事还没结束。' },
+  gaigai: { victory: '太好了，回去给大家煮一锅热可可！', defeat: '没关系，喝点热的，我们再出发。' },
+  xiaoshuai: { victory: '裂缝补好了，至少今晚不会漏风。', defeat: '记住裂开的地方，下次会补得更牢。' },
+};
 
 function atlasStyle(image, index, columns, rows) {
   const column = index % columns;
@@ -42,8 +50,17 @@ function atlasStyle(image, index, columns, rows) {
   };
 }
 
+function characterStyle(key, zoom = 1) {
+  const index = Math.max(0, CHARACTER_KEYS.indexOf(key));
+  if (zoom === 1) return atlasStyle(characterAtlas, index, 3, 1);
+  const imageWidth = 3 * zoom;
+  const x = (0.5 - (index + 0.5) * zoom) / (1 - imageWidth) * 100;
+  const y = (0.5 - 0.35 * zoom) / (1 - zoom) * 100;
+  return { backgroundImage: `url(${characterAtlas})`, backgroundSize: `${imageWidth * 100}% ${zoom * 100}%`, backgroundPosition: `${x}% ${y}%` };
+}
+
 function cardAtlasStyle(cardKey) {
-  return atlasStyle(skillAtlas, Math.max(0, CARD_KEYS.indexOf(cardKey.replace('+', ''))), 5, 5);
+  return atlasStyle(skillAtlas, Math.max(0, CARD_KEYS.indexOf(card(cardKey).baseKey)), 5, 5);
 }
 
 function gearAtlasStyle(baseKey) {
@@ -150,9 +167,9 @@ function CardView({ cardKey, onClick, disabled = false, preview = 0, compact = f
   const c = card(cardKey);
   const Icon = ICONS[c.icon] || Sparkles;
   return (
-    <button className={`game-card ${c.type} ${compact ? 'compact' : ''} ${active ? 'auto-active' : ''} ${onClick ? '' : 'read-only'}`} onClick={onClick} disabled={disabled}>
+    <button className={`game-card ${c.type} ${c.equipmentGranted ? 'equipment-granted' : ''} ${compact ? 'compact' : ''} ${active ? 'auto-active' : ''} ${onClick ? '' : 'read-only'}`} onClick={onClick} disabled={disabled}>
       <span className="card-cost">{c.cost}</span>
-      <span className="card-school">{c.school}</span>
+      <span className="card-school">{c.equipmentGranted ? '装备技' : c.school}</span>
       <span className="card-art pixel-art" style={cardAtlasStyle(cardKey)}><i className="card-category"><Icon size={compact ? 12 : 14} strokeWidth={1.8} /></i></span>
       <strong>{c.name}</strong>
       <span className="card-rule">{description(cardKey).join('。')}。</span>
@@ -165,15 +182,27 @@ function CardView({ cardKey, onClick, disabled = false, preview = 0, compact = f
 function JourneySetup({ onBack, onStart }) {
   const [mode, setMode] = useState('auto');
   const [difficulty, setDifficulty] = useState('standard');
+  const [character, setCharacter] = useState('gaigai');
+  const [step, setStep] = useState('character');
+  const back = () => step === 'rules' ? setStep('character') : onBack();
   return <main className="journey-setup">
     <div className="splash-art camper-art" style={{ backgroundImage: `url(${camperPixel})` }} />
     <div className="setup-shade" />
-    <button className="icon-button setup-back" onPointerDown={capturePress} onClick={onBack} aria-label="返回开场"><ArrowLeft /></button>
-    <section className="setup-copy">
+    <button className="icon-button setup-back" onPointerDown={capturePress} onClick={back} aria-label="返回上一步"><ArrowLeft /></button>
+    <section className={`setup-copy ${step === 'character' ? 'character-step' : ''}`}>
       <span className="eyebrow">NEW JOURNEY</span>
-      <h1>准备启程</h1>
-      <p>选择本次旅程的出牌方式与难度。</p>
-      <div className="splash-settings">
+      <h1>{step === 'character' ? '今晚谁值班？' : '准备启程'}</h1>
+      <p>{step === 'character' ? '角色特性会改变初始牌组和更容易遇到的技能流派。' : `已选择 ${CHARACTERS[character].name}，再决定本次旅程的出牌方式与难度。`}</p>
+      {step === 'character' ? <div className="character-picker">
+        {Object.entries(CHARACTERS).map(([key, hero]) => <button key={key} className={`character-choice ${character === key ? 'active' : ''}`} onClick={() => setCharacter(key)}>
+          <span className="character-portrait pixel-art" style={characterStyle(key)} />
+          <span className="character-heading"><strong>{hero.name}</strong>{hero.recommended && <em>新手推荐</em>}</span>
+          <small>{hero.role}</small>
+          <b>{hero.trait}</b>
+          <p>{hero.description}</p>
+          <i>{hero.style}</i>
+        </button>)}
+      </div> : <div className="splash-settings">
         <div className="setting-group" onClick={event => handleSegmentFrame(event, ['auto', 'manual'], setMode)}><small>出牌方式</small><div className="mode-switch" aria-label="出牌方式">
           <button className={mode === 'auto' ? 'active' : ''} onPointerDown={capturePress} onClick={() => setMode('auto')}><Sparkles />自动出牌</button>
           <button className={mode === 'manual' ? 'active' : ''} onPointerDown={capturePress} onClick={() => setMode('manual')}><Swords />手动出牌</button>
@@ -181,8 +210,10 @@ function JourneySetup({ onBack, onStart }) {
         <div className="setting-group" onClick={event => handleSegmentFrame(event, Object.keys(DIFFICULTIES), setDifficulty)}><small>旅程难度</small><div className="difficulty-switch" aria-label="旅程难度">
           {Object.entries(DIFFICULTIES).map(([key, item]) => <button key={key} className={difficulty === key ? 'active' : ''} onPointerDown={capturePress} onClick={() => setDifficulty(key)}>{item.name}</button>)}
         </div></div>
-      </div>
-      <button className="primary setup-start" onPointerDown={capturePress} onClick={() => onStart(mode, difficulty)}><Moon />进入房车</button>
+      </div>}
+      {step === 'character'
+        ? <button className="primary setup-start" onPointerDown={capturePress} onClick={() => setStep('rules')}>选择 {CHARACTERS[character].name}，下一步</button>
+        : <button className="primary setup-start" onPointerDown={capturePress} onClick={() => onStart(mode, difficulty, character)}><Moon />进入房车</button>}
     </section>
   </main>;
 }
@@ -218,7 +249,10 @@ function CamperHub({ state, dispatch, onDrawer, onWorkshop, onGuests }) {
     <div className="hub-background" style={{ backgroundImage: `url(${camperPixel})` }} />
     <div className="hub-shade" />
     <header className="hub-topbar">
-      <div><Tip text="DAY 表示本次旅程累计完成的战斗数；黄昏是进入梦境前的房车时间。"><span className="eyebrow">DAY {state.victories + 1} · 黄昏</span></Tip><strong>晚安旅行屋</strong></div>
+      <button className="hub-character" onPointerDown={capturePress} onClick={onDrawer} aria-label={`查看${CHARACTERS[state.character].name}的角色与装备`}>
+        <span className="hub-character-avatar pixel-art" style={characterStyle(state.character, 2.2)} />
+        <span><small className="eyebrow">DAY {state.victories + 1} · 黄昏</small><strong>{CHARACTERS[state.character].name} · 晚安旅行屋</strong></span>
+      </button>
       <div className="hub-resources"><Tip text="生命归零时本局直接结束，需要重新开始旅程。"><span><Heart />{state.hp}/{state.maxHp}</span></Tip><Tip text="旅币用于工坊重抽属性、升级房车和旅途交易。"><span><Coins />{state.gold}</span></Tip></div>
       {bagUnlocked ? <button className="icon-button" onPointerDown={capturePress} onClick={onDrawer} aria-label="打开装备与背包"><Menu /></button> : <span />}
     </header>
@@ -336,8 +370,9 @@ function Battle({ state, dispatch, outcome = null, battleSpeed = 1, onBattleSpee
         <div key={`player-${state.hp}`} className={`player-row ${playerHit ? 'player-hit' : ''} ${playerDelta?.value > 0 ? 'player-healed' : ''} ${playerGuarded ? 'player-guarded' : ''}`}>
           {playerHit && <div key={`scratch-${actionKey}`} className="player-scratch" aria-hidden="true"><i /><i /><i /></div>}
           {playerDelta?.value > 0 && <div key={`heal-${playerDelta.key}`} className="player-heal-effect" aria-hidden="true"><i /><i /><i /></div>}
+          <span className="battle-character-avatar pixel-art" style={characterStyle(state.character, 2.2)} aria-label={CHARACTERS[state.character].name} />
           <div className="player-health">
-            <div><span className="level-pill">Lv.{state.level}</span><small>生命</small><Heart size={18} fill="currentColor" /><strong>{state.hp}</strong><span>/ {state.maxHp}</span>{state.block > 0 && <Tip text="护盾会优先抵消伤害，并在敌人行动后清空。"><b><Shield size={15} />{state.block}</b></Tip>}</div>
+            <div><span className="level-pill">Lv.{state.level}</span><small>{CHARACTERS[state.character].name}</small><Heart size={18} fill="currentColor" /><strong>{state.hp}</strong><span>/ {state.maxHp}</span>{state.block > 0 && <Tip text={state.character === 'xiaoshuai' ? '护盾优先抵消伤害；小帅会反击，并把剩余护盾的一半带到下回合。' : '护盾会优先抵消伤害，并在敌人行动后清空。'}><b><Shield size={15} />{state.block}</b></Tip>}</div>
             <Bar value={state.hp} max={state.maxHp} />
           </div>
           <Tip text="能量用于打出卡牌，每回合开始时恢复至 3。"><div key={`energy-${actionKey}`} className={`energy ${energyGain ? 'energy-gain' : ''}`}><Sparkles size={18} /><strong>{state.energy}</strong><span>/ 3</span></div></Tip>
@@ -345,6 +380,7 @@ function Battle({ state, dispatch, outcome = null, battleSpeed = 1, onBattleSpee
           <div className="player-stat-deltas">{statDeltas.filter(item => ['player-block', 'energy'].includes(item.kind)).map(item => <em key={item.key} className={`stat-delta ${item.value > 0 ? 'gain' : 'loss'}`}>{item.label} {item.value > 0 ? '+' : ''}{item.value}</em>)}</div>
         </div>
         {state.weak > 0 && <Tip text="虚弱会让你造成的基础伤害降低 25%，持续到下一回合。"><div className="status"><Moon size={14} />虚弱：伤害 -25%</div></Tip>}
+        {state.character === 'gaigai' && state.warmth > 0 && <Tip text="该该溢出的治疗会变成暖意，下一张攻击牌会消耗全部暖意并追加等量伤害。"><div className="status warmth-status"><Flame size={14} />暖意 {state.warmth}</div></Tip>}
         <div className="combat-body">
           <div className={`hand ${state.battleMode === 'auto' ? 'auto' : ''}`} aria-label="手牌">
             {state.hand.map((key, index) => (
@@ -372,6 +408,7 @@ function Reward({ state, dispatch }) {
   const [reviewing, setReviewing] = useState(false);
   const loot = itemFor(state, state.lastLoot);
   return <Overlay variant="reward" background={PIXEL_BACKGROUNDS[state.stage]} eyebrow="DREAM CLEARED · 恭喜" title="胜利" text="梦境已经安宁，今晚的旅途仍会继续。">
+    <div className="result-character"><span className="result-character-avatar pixel-art" style={characterStyle(state.character, 2)} /><p><strong>{CHARACTERS[state.character].name}</strong>“{CHARACTER_LINES[state.character].victory}”</p></div>
     <button className="review-button" onClick={() => setReviewing(true)}><BookOpen size={16} />回顾战斗</button>
     {loot && <div className="loot-banner"><Backpack /><span><small>随机装备已放入背包</small><strong>{itemName(loot)}</strong><em>{itemLines(loot).join(' · ')}</em></span><b>{loot.rarity}</b></div>}
     <div className="reward-progress"><span>角色等级 {state.level}</span><span>{state.xp} / {state.nextXp} XP</span></div>
@@ -424,10 +461,10 @@ function MapView({ state, dispatch }) {
       {CHECKPOINT_STEPS.map(step => <div key={step} className="map-milepost" style={{ top: `${y(step - 1)}px` }}><span>{step} · {CHECKPOINTS[step].title}</span></div>)}
       {nodes.map(node => {
         const meta = NODE_META[node.type], Icon = meta.icon;
-        const visited = state.visited.includes(node.id), enabled = available.has(node.id);
-        return <button key={node.id} className={`map-node ${node.type} ${visited ? 'visited' : ''} ${enabled ? 'available' : ''}`}
+        const visited = state.visited.includes(node.id), enabled = available.has(node.id), current = state.currentNode === node.id;
+        return <button key={node.id} className={`map-node ${node.type} ${visited ? 'visited' : ''} ${enabled ? 'available' : ''} ${current ? 'current' : ''}`}
           style={{ left: `${node.x}%`, top: `${y(node.row)}px` }} aria-disabled={!enabled} onClick={event => enabled ? dispatch({ type: 'node', id: node.id }) : show(visited ? '这个节点已经走过。' : '需要沿当前节点亮起的连线继续前进。', event)} aria-label={`${meta.label} · 第 ${node.row + 1} 步`}>
-          <Icon /><span>{enabled ? '可前往' : meta.label}</span>
+          {current ? <i className="map-character-avatar pixel-art" style={characterStyle(state.character, 2.3)} /> : <Icon />}<span>{enabled ? '可前往' : meta.label}</span>
         </button>;
       })}
     </div></div>
@@ -482,13 +519,17 @@ function BattleReview({ entries, enemyName, onClose }) {
 function Finale({ won, state, onEnd }) {
   const [reviewing, setReviewing] = useState(false);
   const sprite = enemySpriteProps(state);
-  return <main className={`finale ${won ? 'won' : 'lost'}`}><div className="finale-art pixel-art" style={{ backgroundImage: `url(${PIXEL_BACKGROUNDS[state.stage]})` }} />{!won && <div className={`finale-enemy pixel-art ${sprite.className}`} style={sprite.style} />}<div className="scene-vignette" /><section><span className="eyebrow">JOURNEY ENDED · 本局结束</span><h1>挑战失败</h1><p>生命归零，本次旅程已经结束。你可以回顾刚才的战斗，然后重新开始一局。</p><div className="run-stats"><span>等级 <b>{state.level}</b></span><span>战斗胜利 <b>{state.victories}</b></span><span>回合 <b>{state.totalTurns}</b></span></div><div className="finale-actions"><button className="primary" onClick={onEnd}><X size={18} />结束本局</button><button className="secondary" onClick={() => setReviewing(true)}><BookOpen size={18} />回顾战斗</button></div></section>{reviewing && <BattleReview entries={state.battleLog} enemyName={enemyFor(state).name} onClose={() => setReviewing(false)} />}</main>;
+  return <main className={`finale ${won ? 'won' : 'lost'}`}><div className="finale-art pixel-art" style={{ backgroundImage: `url(${PIXEL_BACKGROUNDS[state.stage]})` }} />{!won && <div className={`finale-enemy pixel-art ${sprite.className}`} style={sprite.style} />}<div className="scene-vignette" /><section><span className="finale-character pixel-art" style={characterStyle(state.character, 1.8)} /><span className="eyebrow">JOURNEY ENDED · 本局结束</span><h1>挑战失败</h1><p>“{CHARACTER_LINES[state.character].defeat}”</p><small>生命归零，本次旅程已经结束。可以回顾刚才的战斗，然后重新开始一局。</small><div className="run-stats"><span>等级 <b>{state.level}</b></span><span>战斗胜利 <b>{state.victories}</b></span><span>回合 <b>{state.totalTurns}</b></span></div><div className="finale-actions"><button className="primary" onClick={onEnd}><X size={18} />结束本局</button><button className="secondary" onClick={() => setReviewing(true)}><BookOpen size={18} />回顾战斗</button></div></section>{reviewing && <BattleReview entries={state.battleLog} enemyName={enemyFor(state).name} onClose={() => setReviewing(false)} />}</main>;
 }
 
 const SLOT_ICONS = { weapon: Swords, armor: Shirt, bag: Backpack, scarf: Wind, charm: Gem, decor: TentTree };
 
 function itemEffect(item) {
   return itemLines(item).join(' · ');
+}
+
+function itemCoreStats(item) {
+  return itemLines(item).filter(line => /^(伤害|护盾|战后恢复) \+\d+/.test(line)).slice(0, 3);
 }
 
 function gearAccent(baseKey) {
@@ -501,24 +542,47 @@ function GearArt({ baseKey, slot, Icon, empty = false }) {
   return <span className={`gear-icon ${style ? 'gear-art pixel-art' : 'gear-empty'}`} style={{ ...(style || {}), '--gear-accent': empty ? '#8a938a' : gearAccent(baseKey) }}><i className="gear-category"><Icon /></i></span>;
 }
 
-function GearRow({ state, item, equipped, disabled, onEquip }) {
+function GearRow({ item, equipped, onOpen }) {
   const base = ITEMS[item.base], Icon = SLOT_ICONS[base.slot];
-  const current = itemFor(state, state.equipment[base.slot]);
-  const difference = itemScore(item) - itemScore(current);
-  return <button className={`gear-row rarity-${item.rarity} ${equipped ? 'equipped' : ''}`} disabled={disabled || equipped} onClick={onEquip}>
-    <GearArt baseKey={item.base} slot={base.slot} Icon={Icon} /><span><small>{item.rarity} · {SLOT_LABELS[base.slot]}</small><strong>{itemName(item)}</strong><em>{itemEffect(item)}</em></span>{equipped ? <b><Check />已装备</b> : <b className={difference >= 0 ? 'better' : 'worse'}>{difference >= 0 ? `+${difference}` : difference} · 装备</b>}
+  const grantedSkill = item.skill ? card(item.skill) : null;
+  return <button className={`gear-card rarity-${item.rarity} ${equipped ? 'equipped' : ''}`} onClick={onOpen} title={`查看 ${itemName(item)} 详情`}>
+    <GearArt baseKey={item.base} slot={base.slot} Icon={Icon} />
+    <strong>{itemName(item)}</strong>
+    <span className="gear-core-stats">{itemCoreStats(item).map(line => <i key={line}>{line}</i>)}</span>
+    {grantedSkill && <span className="gear-skill-label" aria-label={`自带技能：${grantedSkill.name}`}><Sparkles /><b>自带技能：{grantedSkill.name}</b></span>}
+    {equipped && <span className="gear-equipped-badge" aria-label="已装备"><Check /></span>}
   </button>;
 }
 
-function WorkshopRow({ state, item, dispatch }) {
+function GearDetail({ state, item, disabled, onEquip, onClose }) {
   const base = ITEMS[item.base], Icon = SLOT_ICONS[base.slot];
+  const equipped = state.equipment[base.slot] === item.id;
+  const current = itemFor(state, state.equipment[base.slot]);
+  const difference = itemScore(item) - itemScore(current);
+  const skill = item.skill ? card(`${item.skill}~gear`) : null;
+  return <div className="gear-detail-backdrop" onClick={onClose}>
+    <section className={`gear-detail rarity-${item.rarity}`} onClick={event => event.stopPropagation()}>
+      <button className="icon-button gear-detail-close" onClick={onClose} aria-label="关闭装备详情"><X /></button>
+      <header><GearArt baseKey={item.base} slot={base.slot} Icon={Icon} /><span><small>{item.rarity} · {SLOT_LABELS[base.slot]}</small><h3>{itemName(item)}</h3><em>{base.flavor}</em></span></header>
+      {!equipped && current && <div className="gear-detail-compare">
+        <article><small>当前装备</small><strong>{itemName(current)}</strong>{itemLines(current).map(line => <p key={line}>{line}</p>)}</article>
+        <article><small>候选装备</small><strong>{itemName(item)}</strong>{itemLines(item).map(line => <p key={line}>{line}</p>)}</article>
+      </div>}
+      <div className="gear-detail-score"><span>装备评分 <b>{itemScore(item)}</b></span>{!equipped && current && <span className={difference >= 0 ? 'better' : 'worse'}>{difference >= 0 ? `比当前高 ${difference}` : `比当前低 ${Math.abs(difference)}`}</span>}</div>
+      <div className="gear-detail-lines"><small>完整词条</small>{itemLines(item).map(line => <p key={line}>{line}</p>)}</div>
+      {skill && <div className="gear-detail-skill"><span className="gear-detail-skill-art pixel-art" style={cardAtlasStyle(item.skill)} /><span><small>装备自带技能</small><strong>{skill.name}</strong><p>消耗 {skill.cost} 点行动力 · {description(item.skill).join(' · ')}</p></span></div>}
+      <button className="gear-detail-action" disabled={disabled || equipped} onClick={onEquip}>{equipped ? <><Check />已装备</> : disabled ? '战斗中不能更换装备' : `装备到「${SLOT_LABELS[base.slot]}」`}</button>
+    </section>
+  </div>;
+}
+
+function WorkshopRow({ state, item, dispatch, onOpen }) {
   const equipped = Object.values(state.equipment).includes(item.id);
   const cost = rerollCost(item, state.facilities.workshop), value = salvageValue(item);
-  return <div className={`workshop-row rarity-${item.rarity}`}>
-    <GearArt baseKey={item.base} slot={base.slot} Icon={Icon} />
-    <span><small>{item.rarity} · {SLOT_LABELS[base.slot]}</small><strong>{itemName(item)}</strong><em>{itemEffect(item)}</em></span>
-    <div><button disabled={!item.affixes.length || state.gold < cost} onClick={() => dispatch({ type: 'reroll', key: item.id })}><Wrench />重抽属性 · {cost} 旅币</button><button disabled={equipped} onClick={() => dispatch({ type: 'salvage', key: item.id })}>拆解装备 · +{value} 旅币</button></div>
-  </div>;
+  return <article className="workshop-card">
+    <GearRow item={item} equipped={equipped} onOpen={onOpen} />
+    <div className="workshop-card-actions"><button disabled={!item.affixes.length || state.gold < cost} onClick={() => dispatch({ type: 'reroll', key: item.id })}><Wrench />重抽属性<small>{cost} 旅币</small></button><button disabled={equipped} onClick={() => dispatch({ type: 'salvage', key: item.id })}><PackageOpen />拆解装备<small>获得 {value} 旅币</small></button></div>
+  </article>;
 }
 
 const FACILITY_META = [
@@ -531,7 +595,7 @@ function FacilityUpgrades({ state, dispatch }) {
   return <section className="facility-upgrades"><div className="facility-heading"><House /><span><strong>改造房车</strong><small>设施最高 3 级，效果永久保留。</small></span></div>
     <div className="facility-grid">{FACILITY_META.map(meta => {
       const level = state.facilities[meta.key], cost = facilityCost(level), Icon = meta.icon;
-      return <article key={meta.key}><Icon /><span><small>LV.{level} / 3</small><strong>{meta.name}</strong><em>{meta.effect(level)}</em></span><button disabled={cost === null || state.gold < cost} onClick={() => dispatch({ type: 'upgradeFacility', key: meta.key })}>{cost === null ? <><Check />已完成</> : <><Coins />{cost}</>}</button></article>;
+      return <article key={meta.key}><Icon /><span><small>LV.{level} / 3</small><strong>{meta.name}</strong><em>{meta.effect(level)}</em></span><button disabled={cost === null || state.gold < cost} onClick={() => dispatch({ type: 'upgradeFacility', key: meta.key })}>{cost === null ? <><Check />已完成</> : <><Wrench />升级设施<small><Coins />{cost} 旅币</small></>}</button></article>;
     })}</div>
   </section>;
 }
@@ -568,20 +632,48 @@ function CommissionBoard({ state, dispatch }) {
   </section>;
 }
 
+const DRAWER_TUTORIAL_KEY = 'mistbound-drawer-tutorials';
+const DRAWER_TUTORIALS = {
+  character: { title: '装备与替换', text: '点击任一装备槽位，会展开同类装备列表。列表中的卡牌点击后会直接替换当前装备。' },
+  bag: { title: '快速比较装备', text: '卡面只保留名称和核心数值。点击卡牌可查看完整词条、技能，以及与当前装备的详细对比。' },
+  deck: { title: '查看当前卡组', text: '这里显示本局已经获得的全部技能卡。装备自带技能会在进入战斗时额外加入牌堆。' },
+  workshop: { title: '重抽与拆解', text: '重抽属性会保留装备和自带技能，只刷新随机词条；拆解会永久销毁装备并返还旅币。' },
+  guests: { title: '客人与旅程委托', text: '完成委托可以领取旅币；反复探索对应地区，会推进住客故事并解锁专属纪念品。' },
+};
+
+function readDrawerTutorials() {
+  try { return JSON.parse(localStorage.getItem(DRAWER_TUTORIAL_KEY) || '{}'); } catch { return {}; }
+}
+
 function Drawer({ state, dispatch, onClose, onRestart, initialTab = 'character' }) {
   const [tab, setTab] = useState(initialTab);
+  const [selectedGear, setSelectedGear] = useState(null);
+  const [selectedSlot, setSelectedSlot] = useState(null);
+  const [seenTutorials, setSeenTutorials] = useState(readDrawerTutorials);
+  const [tutorialTab, setTutorialTab] = useState(() => readDrawerTutorials()[initialTab] ? null : initialTab);
   const stats = equipmentStats(state);
+  const openTab = next => {
+    setTab(next); setSelectedSlot(null);
+    if (!seenTutorials[next]) setTutorialTab(next);
+  };
+  const finishTutorial = () => {
+    const next = { ...seenTutorials, [tutorialTab]: true };
+    setSeenTutorials(next); localStorage.setItem(DRAWER_TUTORIAL_KEY, JSON.stringify(next)); setTutorialTab(null);
+  };
   return <div className="drawer-backdrop" onClick={onClose}><aside className="drawer" onClick={e => e.stopPropagation()}>
     <button className="icon-button close" onClick={onClose} aria-label="关闭"><X /></button><span className="eyebrow">旅行屋档案</span><h2>店主与行囊</h2>
-    <div className="level-card"><span>LV</span><strong>{state.level}</strong><div><b>梦境旅店店主</b><small>{state.xp} / {state.nextXp} XP</small><Bar value={state.xp} max={state.nextXp} tone="xp" /></div></div>
+    <div className="level-card"><span>LV</span><strong>{state.level}</strong><div><b>{CHARACTERS[state.character].name} · {CHARACTERS[state.character].role}</b><small>{state.xp} / {state.nextXp} XP</small><Bar value={state.xp} max={state.nextXp} tone="xp" /></div></div>
+    <div className="character-trait"><span className="character-avatar pixel-art" style={characterStyle(state.character, 1.8)} /><div><small>角色特性</small><strong>{CHARACTERS[state.character].trait}</strong><p>{CHARACTERS[state.character].description}</p></div></div>
     <div className="drawer-stats"><Tip text="伤害会加到所有攻击卡牌的基础伤害上。"><span><Swords />伤害 +{stats.attack}</span></Tip><Tip text="每回合开始时自动获得这些护盾。"><span><Shield />护盾 +{stats.block}</span></Tip><Tip text="每场战斗胜利后额外回复的生命。"><span><Heart />恢复 +{stats.recovery}</span></Tip></div>
-    <nav className="drawer-tabs"><button className={tab === 'character' ? 'active' : ''} onClick={() => setTab('character')}>装备</button><button className={tab === 'bag' ? 'active' : ''} onClick={() => setTab('bag')}>背包 {state.inventory.length}</button><button className={tab === 'deck' ? 'active' : ''} onClick={() => setTab('deck')}>卡组 {state.deck.length}</button><button className={tab === 'workshop' ? 'active' : ''} onClick={() => setTab('workshop')}>工坊</button><button className={tab === 'guests' ? 'active' : ''} onClick={() => setTab('guests')}>客人</button></nav>
-    {tab === 'character' && <><div className="equipment-grid">{Object.entries(SLOT_LABELS).map(([slot, label]) => { const id = state.equipment[slot], item = itemFor(state, id), Icon = SLOT_ICONS[slot]; return <div className="equipment-slot" key={slot}><GearArt baseKey={item?.base || slot} slot={slot} Icon={Icon} empty={!item} /><small>{label}</small><strong>{item ? itemName(item) : '未装备'}</strong><em>{item ? itemEffect(item) : '无属性加成'}</em></div>; })}</div><div className="log"><h3><BookOpen />最近战报</h3>{state.log.slice(0, 6).map((item, i) => <p key={i}>{item}</p>)}</div></>}
-    {tab === 'bag' && <div className="inventory-list">{state.inventory.map(item => { const slot = ITEMS[item.base].slot; return <GearRow key={item.id} state={state} item={item} equipped={state.equipment[slot] === item.id} disabled={state.phase === 'combat'} onEquip={() => dispatch({ type: 'equip', key: item.id })} />; })}{state.phase === 'combat' && <p className="bag-hint">梦境中不能更换装备。</p>}</div>}
+    <nav className="drawer-tabs"><button className={tab === 'character' ? 'active' : ''} onClick={() => openTab('character')}>装备</button><button className={tab === 'bag' ? 'active' : ''} onClick={() => openTab('bag')}>背包 {state.inventory.length}</button><button className={tab === 'deck' ? 'active' : ''} onClick={() => openTab('deck')}>卡组 {state.deck.length}</button><button className={tab === 'workshop' ? 'active' : ''} onClick={() => openTab('workshop')}>工坊</button><button className={tab === 'guests' ? 'active' : ''} onClick={() => openTab('guests')}>客人</button></nav>
+    {tab === 'character' && <><div className="equipment-grid">{Object.entries(SLOT_LABELS).map(([slot, label]) => { const id = state.equipment[slot], item = itemFor(state, id), Icon = SLOT_ICONS[slot]; return <button className={`equipment-slot ${selectedSlot === slot ? 'active' : ''}`} key={slot} onClick={() => setSelectedSlot(selectedSlot === slot ? null : slot)}><GearArt baseKey={item?.base || slot} slot={slot} Icon={Icon} empty={!item} /><small>{label}</small><strong>{item ? itemName(item) : '未装备'}</strong><em>{item ? itemEffect(item) : '点击选择装备'}</em></button>; })}</div>{selectedSlot && <section className="slot-replacements"><header><span><small>替换装备</small><strong>{SLOT_LABELS[selectedSlot]}</strong></span><button className="icon-button" onClick={() => setSelectedSlot(null)} aria-label="收起替换列表"><X /></button></header><p>点击下方装备即可直接替换。</p><div className="inventory-list">{state.inventory.filter(item => ITEMS[item.base].slot === selectedSlot).map(item => <GearRow key={item.id} item={item} equipped={state.equipment[selectedSlot] === item.id} onOpen={() => { if (state.equipment[selectedSlot] !== item.id && state.phase !== 'combat') dispatch({ type: 'equip', key: item.id }); }} />)}</div>{state.phase === 'combat' && <small className="bag-hint">战斗中只能查看，暂时不能替换。</small>}</section>}<div className="log"><h3><BookOpen />最近战报</h3>{state.log.slice(0, 6).map((item, i) => <p key={i}>{item}</p>)}</div></>}
+    {tab === 'bag' && <div className="inventory-list">{state.inventory.map(item => { const slot = ITEMS[item.base].slot; return <GearRow key={item.id} item={item} equipped={state.equipment[slot] === item.id} onOpen={() => setSelectedGear(item.id)} />; })}{state.phase === 'combat' && <p className="bag-hint">梦境中可以查看装备，但不能更换。</p>}</div>}
     {tab === 'deck' && <div className="deck-list">{state.deck.map((key, i) => <CardView key={`${key}-${i}`} cardKey={key} compact />)}</div>}
-    {tab === 'workshop' && <div className="workshop"><header><Wrench /><span><strong>房车工坊</strong><small>重抽属性：花旅币重新随机词条；拆解装备：销毁装备并换回旅币。附带技能不会被重抽。</small></span><b><Coins />{state.gold}</b></header><FacilityUpgrades state={state} dispatch={dispatch} />{state.inventory.map(item => <WorkshopRow key={item.id} state={state} item={item} dispatch={dispatch} />)}</div>}
+    {tab === 'workshop' && <div className="workshop"><header><Wrench /><span><strong>房车工坊</strong><small>重抽属性会刷新随机词条；拆解会永久销毁装备。附带技能不会被重抽。</small></span><b><Coins />{state.gold}</b></header><FacilityUpgrades state={state} dispatch={dispatch} /><div className="workshop-items">{state.inventory.map(item => <WorkshopRow key={item.id} state={state} item={item} dispatch={dispatch} onOpen={() => setSelectedGear(item.id)} />)}</div></div>}
     {tab === 'guests' && <><CommissionBoard state={state} dispatch={dispatch} /><GuestRooms state={state} dispatch={dispatch} /></>}
     <button className="danger" onClick={onRestart}>放弃并重新开始</button>
+    {selectedGear && itemFor(state, selectedGear) && <GearDetail state={state} item={itemFor(state, selectedGear)} disabled={state.phase === 'combat'} onClose={() => setSelectedGear(null)} onEquip={() => { dispatch({ type: 'equip', key: selectedGear }); setSelectedGear(null); }} />}
+    {tutorialTab && <div className="tutorial-backdrop drawer-tutorial"><section className="tutorial-card"><span>旅行屋指南</span><h2>{DRAWER_TUTORIALS[tutorialTab].title}</h2><p>{DRAWER_TUTORIALS[tutorialTab].text}</p><button className="primary" onClick={finishTutorial}>知道了</button></section></div>}
   </aside></div>;
 }
 
@@ -590,10 +682,12 @@ function App() {
   const [state, setState] = useState(null);
   const [drawer, setDrawer] = useState(false);
   const [settling, setSettling] = useState(null);
-  const [battleSpeed, setBattleSpeed] = useState(1);
+  const [battleSpeed, setBattleSpeed] = useState(() => {
+    const savedSpeed = Number(localStorage.getItem(BATTLE_SPEED_KEY));
+    return [1, 2, 3].includes(savedSpeed) ? savedSpeed : 1;
+  });
   const [valueFloaters, setValueFloaters] = useState([]);
   const previousState = useRef(null);
-  const previousBattleKey = useRef(null);
   useEffect(() => {
     if (!import.meta.env.DEV) return undefined;
     const reportPointer = event => {
@@ -624,12 +718,7 @@ function App() {
     };
   }, []);
   useEffect(() => { if (state) localStorage.setItem(SAVE_KEY, serialize(state)); }, [state]);
-  useEffect(() => {
-    if (!state || state.phase !== 'combat') return;
-    const battleKey = `${state.stage}-${state.mapRow}-${state.bossFight ? 'boss' : 'node'}`;
-    if (previousBattleKey.current !== battleKey) setBattleSpeed(1);
-    previousBattleKey.current = battleKey;
-  }, [state?.phase, state?.stage, state?.mapRow, state?.bossFight]);
+  useEffect(() => { localStorage.setItem(BATTLE_SPEED_KEY, String(battleSpeed)); }, [battleSpeed]);
   useEffect(() => {
     const previous = previousState.current;
     previousState.current = state;
@@ -651,7 +740,7 @@ function App() {
   }, [state?.phase, state?.played, battleSpeed]);
   const enemy = useMemo(() => state ? enemyFor(state) : null, [state]);
   const location = state?.phase === 'map' ? CHAPTERS[state.stage].name : state?.phase === 'camp' ? '亮灯的休息站' : state?.phase === 'checkpoint' ? CHECKPOINTS[state.mapRow + 1]?.title || '夜程路标' : state?.phase === 'event' ? '夜路岔口' : enemy?.place;
-  const startNew = (mode = 'auto', difficulty = 'standard') => { const next = newRun(Date.now() >>> 0, mode, difficulty); localStorage.setItem(SAVE_KEY, serialize(next)); setSaved(next); setDrawer(false); setState(next); };
+  const startNew = (mode = 'auto', difficulty = 'standard', character = 'gaigai') => { const next = newRun(Date.now() >>> 0, mode, difficulty, character); localStorage.setItem(SAVE_KEY, serialize(next)); setSaved(next); setDrawer(false); setState(next); };
   const resetRun = () => { localStorage.removeItem(SAVE_KEY); setSaved(null); setDrawer(false); setState(null); };
   const dispatch = React.useCallback(action => setState(current => transition(current, action)), []);
   if (!state) return <Splash saved={saved} onContinue={() => setState(saved)} onNew={startNew} />;
