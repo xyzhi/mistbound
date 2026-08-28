@@ -1,0 +1,373 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { CARDS, CHAPTER_LOOT, CHECKPOINTS, ENCOUNTERS, ENEMIES, ITEMS, MAP_STEPS, attackPreview, buildChapterMap, card, chooseAutoCard, commissionStatus, enemyFor, equipmentStats, facilityCost, itemFor, newRun, rerollCost, restore, serialize, transition } from '../src/game.mjs';
+
+const leaveHub = (state, stage = 0) => transition(state, { type: 'depart', stage });
+const enterBattle = seed => transition(leaveHub(newRun(seed)), { type: 'node', id: 'c0r0n0' });
+
+test('同一种子生成相同的初始手牌', () => {
+  assert.deepEqual(enterBattle(20260827).hand, enterBattle(20260827).hand);
+});
+
+test('出牌会消耗能量并进入弃牌堆', () => {
+  const state = enterBattle(7);
+  const index = state.hand.findIndex(key => card(key).cost <= state.energy);
+  const key = state.hand[index];
+  const next = transition(state, { type: 'play', index });
+  assert.equal(next.energy, state.energy - card(key).cost + (card(key).energy || 0));
+  assert.equal(next.played, 1);
+  assert.ok(next.discard.includes(key) || next.exhaust.includes(key));
+});
+
+test('战斗日志按时间顺序记录并在每次行动后显示双方状态', () => {
+  const state = enterBattle(71);
+  assert.ok(state.battleLog[0].startsWith('抵达'));
+  assert.ok(state.battleLog[1].startsWith('第 1 回合'));
+  assert.ok(state.battleLog[2].startsWith('状态：你'));
+  const index = state.hand.findIndex(key => card(key).cost <= state.energy);
+  const next = transition(state, { type: 'play', index });
+  assert.ok(next.battleLog.at(-2).startsWith('你打出'));
+  assert.match(next.battleLog.at(-1), new RegExp(`状态：你 \\d+/${next.maxHp} 生命.*${enemyFor(next).name} \\d+/${next.enemy.maxHp} 生命`));
+});
+
+test('结束回合会执行敌人意图并开始下一回合', () => {
+  const state = enterBattle(11);
+  const foeName = enemyFor(state).name;
+  const next = transition(state, { type: 'end' });
+  assert.equal(next.turn, 2);
+  assert.equal(next.energy, 3);
+  assert.ok(next.hp < state.hp || next.enemy.block > 0);
+  assert.ok(next.battleLog.some(line => line.startsWith(foeName)));
+});
+
+test('技能池包含多种主题，保留牌不会在回合结束时弃掉', () => {
+  assert.ok(Object.keys(CARDS).length >= 20);
+  const state = enterBattle(12);
+  state.hand = ['blanket', 'slash'];
+  const next = transition(state, { type: 'end' });
+  assert.ok(next.hand.includes('blanket'));
+  assert.ok(next.discard.includes('slash'));
+});
+
+test('开局可选择自动或手动战斗，进入旅程后不能切换', () => {
+  assert.equal(newRun(1, 'auto').battleMode, 'auto');
+  const manual = newRun(1, 'manual');
+  assert.equal(manual.battleMode, 'manual');
+  assert.equal(transition(manual, { type: 'mode', mode: 'auto' }).battleMode, 'manual');
+});
+
+test('自动战斗会选择可用牌并持续推进', () => {
+  let state = enterBattle(23);
+  const index = chooseAutoCard(state);
+  assert.ok(index >= 0);
+  assert.ok(card(state.hand[index]).cost <= state.energy);
+  const next = transition(state, { type: 'auto' });
+  assert.equal(next.played, 1);
+  assert.ok(next.battleLog.some(line => line.includes('你打出')));
+});
+
+test('每章提供八种非首领遭遇，首领保持独立', () => {
+  assert.ok(ENCOUNTERS.every(encounters => encounters.length >= 8));
+  assert.ok(ENCOUNTERS.every(encounters => new Set(encounters.map(enemy => enemy.art)).size >= 8));
+  const state = leaveHub(newRun(24));
+  state.mapRow = 0; state.foe = 0;
+  assert.equal(enemyFor(state).name, ENCOUNTERS[0][0].name);
+  state.mapRow = 20; state.foe = 1;
+  assert.equal(enemyFor(state).name, ENCOUNTERS[0][1].name);
+  state.elite = true; state.foe = 2;
+  assert.equal(enemyFor(state).name, ENCOUNTERS[0][2].name);
+  state.bossFight = true;
+  assert.equal(enemyFor(state).name, ENEMIES[0].name);
+});
+
+test('装备会真实改变攻击与回合格挡', () => {
+  let state = newRun(29, 'manual');
+  assert.equal(equipmentStats(state).attack, 1);
+  assert.equal(equipmentStats(state).block, 1);
+  state.inventory.push({ id: 'gear-3', base: 'bookmarkKnife', rarity: '精良', affixes: [], skill: null });
+  state.nextItemId = 4;
+  state = transition(state, { type: 'equip', key: 'gear-3' });
+  const battle = transition(leaveHub(state), { type: 'node', id: 'c0r0n0' });
+  assert.equal(battle.block, 1);
+  assert.equal(attackPreview(battle, 'slash'), 10);
+});
+
+test('胜利获得经验、升级并掉落装备', () => {
+  const state = enterBattle(31);
+  state.xp = 44;
+  state.hand = ['slash']; state.energy = 3; state.enemy.hp = 1;
+  const reward = transition(state, { type: 'play', index: 0 });
+  assert.equal(reward.level, 2);
+  assert.equal(reward.maxHp, 76);
+  assert.ok(reward.lastLoot);
+  assert.ok(CHAPTER_LOOT[0].includes(itemFor(reward, reward.lastLoot).base));
+  assert.ok(['weapon', 'armor', 'bag', 'scarf', 'charm', 'decor'].includes(ITEMS[itemFor(reward, reward.lastLoot).base].slot));
+});
+
+test('六章各有八种装备底材并覆盖六个装备位', () => {
+  assert.ok(Object.keys(ITEMS).length >= 48);
+  for (const pool of CHAPTER_LOOT) {
+    assert.equal(pool.length, 8);
+    assert.equal(new Set(pool).size, 8);
+    assert.ok(pool.every(key => ITEMS[key]));
+    assert.deepEqual(new Set(pool.map(key => ITEMS[key].slot)), new Set(['weapon', 'armor', 'bag', 'scarf', 'charm', 'decor']));
+  }
+});
+
+test('装备独有特性与自带技能会真实进入战斗规则', () => {
+  const state = newRun(315, 'manual');
+  state.inventory.push({ id: 'gear-3', base: 'morningShears', rarity: '普通', affixes: [], skill: ITEMS.morningShears.skill || null });
+  state.equipment.weapon = 'gear-3';
+  state.nextItemId = 4;
+  const battle = transition(leaveHub(state), { type: 'node', id: 'c0r0n0' });
+  battle.hand = ['slash', 'slash']; battle.energy = 3;
+  assert.equal(attackPreview(battle, 'slash'), 11);
+  const afterFirst = transition(battle, { type: 'play', index: 0 });
+  assert.equal(attackPreview(afterFirst, 'slash'), 9);
+});
+
+test('首次战斗会显示一次简明教学，确认后不再阻塞自动战斗', () => {
+  const state = enterBattle(316);
+  assert.equal(state.tutorialDone, false);
+  const ready = transition(state, { type: 'tutorialDone' });
+  assert.equal(ready.tutorialDone, true);
+  assert.deepEqual(transition(ready, { type: 'tutorialDone' }), ready);
+});
+
+test('同一地区可以反复掉落独立装备，装备技能会加入战斗牌组', () => {
+  let state = enterBattle(310);
+  state.hand = ['slash']; state.energy = 3; state.enemy.hp = 1;
+  state = transition(state, { type: 'play', index: 0 });
+  const firstId = state.lastLoot;
+  const firstCount = state.inventory.length;
+  state.phase = 'combat'; state.enemy.hp = 1; state.enemy.maxHp = 10; state.hand = ['slash']; state.energy = 3;
+  state = transition(state, { type: 'play', index: 0 });
+  assert.equal(state.inventory.length, firstCount + 1);
+  assert.notEqual(state.lastLoot, firstId);
+
+  const skillItem = state.inventory[0];
+  skillItem.skill = 'mend';
+  state.equipment[ITEMS[skillItem.base].slot] = skillItem.id;
+  state.phase = 'map'; state.mapRow = -1; state.currentNode = null; state.visited = [];
+  const battle = transition(state, { type: 'node', id: 'c0r0n0' });
+  assert.ok([...battle.hand, ...battle.draw].includes('mend'));
+});
+
+test('房车工坊可以重抽随机词条并拆解闲置装备', () => {
+  const state = newRun(311);
+  state.gold = 100;
+  state.inventory.push({ id: 'gear-3', base: 'emberCharm', rarity: '稀有', affixes: [{ key: 'attack', value: 1, prefix: '敏锐的' }], skill: 'mend' });
+  state.nextItemId = 4;
+  const rerolled = transition(state, { type: 'reroll', key: 'gear-3' });
+  assert.equal(rerolled.gold, 58);
+  assert.equal(itemFor(rerolled, 'gear-3').skill, 'mend');
+  assert.equal(itemFor(rerolled, 'gear-3').affixes.length, 3);
+  const salvaged = transition(rerolled, { type: 'salvage', key: 'gear-3' });
+  assert.equal(salvaged.gold, 82);
+  assert.equal(itemFor(salvaged, 'gear-3'), null);
+});
+
+test('房车设施提供永久成长并影响恢复与重抽费用', () => {
+  let state = newRun(3111);
+  state.gold = 1000;
+  assert.equal(facilityCost(0), 80);
+  state = transition(state, { type: 'upgradeFacility', key: 'rooms' });
+  assert.equal(state.facilities.rooms, 1);
+  assert.equal(state.maxHp, 76);
+  state = transition(state, { type: 'upgradeFacility', key: 'workshop' });
+  const rare = { id: 'gear-99', base: 'emberCharm', rarity: '稀有', affixes: [], skill: null };
+  assert.ok(rerollCost(rare, state.facilities.workshop) < rerollCost(rare));
+  state = transition(state, { type: 'upgradeFacility', key: 'kitchen' });
+  assert.equal(state.facilities.kitchen, 1);
+});
+
+test('旅程委托按累计进度发放奖励并进入下一档', () => {
+  let state = newRun(3112);
+  state.victories = 12;
+  const first = commissionStatus(state, 'battles');
+  assert.equal(first.target, 12);
+  state = transition(state, { type: 'claimCommission', key: 'battles' });
+  assert.equal(state.gold, first.reward);
+  assert.equal(state.commissionClaims.battles, 1);
+  assert.equal(commissionStatus(state, 'battles').target, 24);
+  const unchanged = transition(state, { type: 'claimCommission', key: 'battles' });
+  assert.equal(unchanged, state);
+});
+
+test('完成三次客人梦境可领取一次专属传奇纪念品', () => {
+  const state = newRun(312);
+  state.clears[0] = 3;
+  const rewarded = transition(state, { type: 'claimGuestReward', stage: 0 });
+  const gift = itemFor(rewarded, rewarded.lastLoot);
+  assert.equal(gift.rarity, '传奇');
+  assert.ok(gift.skill);
+  assert.equal(rewarded.guestRewards[0], true);
+  const repeated = transition(rewarded, { type: 'claimGuestReward', stage: 0 });
+  assert.equal(repeated.inventory.length, rewarded.inventory.length);
+});
+
+test('普通战斗后继续本章路线，不会提前跳章', () => {
+  const state = enterBattle(13);
+  state.hand = ['slash'];
+  state.energy = 3;
+  state.enemy.hp = 1;
+  const reward = transition(state, { type: 'play', index: 0 });
+  assert.equal(reward.phase, 'reward');
+  assert.equal(reward.choices.length, 3);
+  const map = transition(reward, { type: 'reward', key: reward.choices[0] });
+  assert.equal(map.phase, 'map');
+  assert.equal(map.deck.length, 11);
+  assert.equal(map.stage, 0);
+  const nodes = buildChapterMap(0, map.mapSeed);
+  const current = nodes.find(node => node.id === map.currentNode);
+  const next = transition(map, { type: 'node', id: current.links[0] });
+  assert.notEqual(next, map);
+  assert.equal(next.stage, 0);
+  assert.ok(['combat', 'camp', 'event', 'checkpoint'].includes(next.phase));
+});
+
+test('地图只允许沿连线前进，事件选择会返回地图', () => {
+  const state = leaveHub(newRun(19));
+  assert.equal(transition(state, { type: 'node', id: 'c0boss' }), state);
+  const nodes = buildChapterMap(0, state.mapSeed);
+  const eventNode = nodes.find(node => node.type === 'event' && node.row > 0);
+  const parent = nodes.find(node => node.links.includes(eventNode.id));
+  state.mapRow = parent.row; state.currentNode = parent.id; state.visited = [parent.id];
+  const event = transition(state, { type: 'node', id: eventNode.id });
+  assert.equal(event.phase, 'event');
+  const next = transition(event, { type: 'event', choice: 'bargain' });
+  assert.equal(next.phase, 'map');
+  assert.equal(next.gold, state.gold + 22);
+});
+
+test('六个区域每次探索五十步且每步最多三个选择', () => {
+  for (let chapter = 0; chapter < 6; chapter++) {
+    const nodes = buildChapterMap(chapter);
+    assert.equal(new Set(nodes.map(node => node.row)).size, MAP_STEPS);
+    assert.ok(Math.max(...Array.from({ length: MAP_STEPS }, (_, row) => nodes.filter(node => node.row === row).length)) <= 3);
+    assert.equal(nodes.filter(node => node.type === 'boss').length, 1);
+    const byId = Object.fromEntries(nodes.map(node => [node.id, node]));
+    let current = nodes.find(node => node.row === 0), steps = 1;
+    while (current.links.length) { current = byId[current.links[0]]; steps++; }
+    assert.equal(steps, MAP_STEPS);
+    assert.equal(current.type, 'boss');
+  }
+});
+
+test('不同路线种子会生成不规则但始终可达的地图', () => {
+  const first = buildChapterMap(0, 101);
+  const second = buildChapterMap(0, 202);
+  assert.notDeepEqual(first.map(node => [node.row, node.x, node.links]), second.map(node => [node.row, node.x, node.links]));
+  assert.ok(first.some(node => node.row > 0 && node.row < 49 && node.x !== 20 && node.x !== 50 && node.x !== 80));
+  for (const target of first.filter(node => node.row > 0)) {
+    assert.ok(first.some(node => node.links.includes(target.id)));
+  }
+});
+
+test('开局难度贯穿整局且会改变敌人强度', () => {
+  const standard = newRun(55, 'manual');
+  assert.equal(standard.difficulty, 'standard');
+  const relaxed = newRun(55, 'manual', 'relaxed');
+  assert.equal(transition(relaxed, { type: 'difficulty', difficulty: 'challenge' }).difficulty, 'relaxed');
+  const standardBattle = transition(leaveHub(standard), { type: 'node', id: 'c0r0n0' });
+  const relaxedBattle = transition(leaveHub(relaxed), { type: 'node', id: 'c0r0n0' });
+  assert.ok(standardBattle.enemy.maxHp > relaxedBattle.enemy.maxHp);
+});
+
+test('每十步路标提供恢复、强化和物资选择', () => {
+  const state = leaveHub(newRun(36, 'manual'));
+  state.mapRow = 8; state.currentNode = 'c0r8n1'; state.visited = [state.currentNode]; state.hp = 20;
+  const checkpoint = transition(state, { type: 'node', id: 'c0r9checkpoint' });
+  assert.equal(checkpoint.phase, 'checkpoint');
+  const rested = transition(checkpoint, { type: 'checkpoint', choice: 'rest' });
+  assert.equal(rested.phase, 'map');
+  assert.ok(rested.hp > checkpoint.hp);
+
+  const upgradedState = transition(checkpoint, { type: 'checkpoint', choice: 'upgrade' });
+  assert.ok(upgradedState.deck.some(key => key.endsWith('+')));
+  const supplied = transition(checkpoint, { type: 'checkpoint', choice: 'supplies' });
+  assert.equal(supplied.gold, checkpoint.gold + 30);
+});
+
+test('四个里程碑拥有不同功能和实际结算', () => {
+  assert.deepEqual(Object.keys(CHECKPOINTS).map(Number), [10, 20, 30, 40]);
+  assert.equal(new Set(Object.values(CHECKPOINTS).map(stop => stop.title)).size, 4);
+
+  const shop = leaveHub(newRun(360, 'manual'));
+  shop.phase = 'checkpoint'; shop.mapRow = 19; shop.hp = 40;
+  const bargained = transition(shop, { type: 'checkpoint', choice: 'bargain' });
+  assert.equal(bargained.hp, 32);
+  assert.equal(bargained.gold, 45);
+
+  const cinema = leaveHub(newRun(361, 'manual'));
+  cinema.phase = 'checkpoint'; cinema.mapRow = 29;
+  const upgraded = transition(cinema, { type: 'checkpoint', choice: 'doubleUpgrade' });
+  assert.equal(upgraded.deck.filter(key => key.endsWith('+')).length, 2);
+
+  const finale = leaveHub(newRun(362, 'manual'));
+  finale.phase = 'checkpoint'; finale.mapRow = 39;
+  const supplied = transition(finale, { type: 'checkpoint', choice: 'finalSupplies' });
+  assert.equal(supplied.gold, 60);
+});
+
+test('战败后本局结束，不能从路标直接复活', () => {
+  const state = leaveHub(newRun(361, 'manual'));
+  state.mapRow = 23; state.currentNode = 'c0r23n1'; state.visited = ['c0r9checkpoint', 'c0r19checkpoint', state.currentNode];
+  state.checkpointRow = 19; state.level = 3; state.hp = 0; state.phase = 'lost';
+  const retried = transition(state, { type: 'retry' });
+  assert.equal(retried, state);
+  assert.equal(retried.phase, 'lost');
+  assert.equal(retried.hp, 0);
+});
+
+test('击败区域 Boss 后返回房车并解锁下一站', () => {
+  const state = leaveHub(newRun(37, 'manual'));
+  state.mapRow = 48; state.currentNode = 'c0r48n1'; state.visited = ['c0r48n1'];
+  const boss = transition(state, { type: 'node', id: 'c0boss' });
+  assert.equal(boss.bossFight, true);
+  boss.enemy.hp = 1; boss.hand = ['slash']; boss.energy = 3;
+  const reward = transition(boss, { type: 'play', index: 0 });
+  const hub = transition(reward, { type: 'reward', key: null });
+  assert.equal(hub.phase, 'hub');
+  assert.equal(hub.unlocked, 1);
+  assert.equal(hub.clears[0], 1);
+  assert.equal(hub.mapRow, -1);
+  assert.deepEqual(hub.visited, []);
+});
+
+test('已通关区域可以反复探索并累计次数', () => {
+  let state = newRun(41, 'manual');
+  for (let run = 0; run < 2; run++) {
+    state = leaveHub(state, 0);
+    state.mapRow = 48; state.currentNode = 'c0r48n1'; state.visited = [state.currentNode];
+    state = transition(state, { type: 'node', id: 'c0boss' });
+    state.enemy.hp = 1; state.hand = ['slash']; state.energy = 3;
+    state = transition(state, { type: 'play', index: 0 });
+    state = transition(state, { type: 'reward', key: null });
+  }
+  assert.equal(state.phase, 'hub');
+  assert.equal(state.clears[0], 2);
+  assert.equal(state.unlocked, 1);
+  assert.equal(state.victories, 2);
+});
+
+test('存档可恢复，异常存档会被拒绝', () => {
+  const state = newRun(17);
+  assert.deepEqual(restore(serialize(state)), state);
+  const oldState = structuredClone(state);
+  oldState.version = 8;
+  delete oldState.guestRewards;
+  assert.deepEqual(restore(serialize(oldState)).guestRewards, [false, false, false, false, false, false]);
+  const deepState = leaveHub(newRun(171));
+  deepState.mapRow = 19; deepState.currentNode = 'c0r19checkpoint'; deepState.visited = ['c0r9checkpoint', 'c0r19checkpoint'];
+  assert.deepEqual(restore(serialize(deepState)), deepState);
+  const versionNine = structuredClone(deepState);
+  versionNine.version = 9; versionNine.currentNode = 'c0r19n1'; versionNine.visited = ['c0r9n0', 'c0r19n1'];
+  assert.equal(restore(serialize(versionNine)).currentNode, 'c0r19checkpoint');
+  const threeSlotSave = structuredClone(state);
+  threeSlotSave.version = 18;
+  threeSlotSave.equipment = { weapon: 'gear-1', armor: 'gear-2', charm: null };
+  assert.deepEqual(Object.keys(restore(serialize(threeSlotSave)).equipment), ['weapon', 'armor', 'bag', 'scarf', 'charm', 'decor']);
+  assert.equal(restore('{"version":999}'), null);
+  assert.equal(restore('not-json'), null);
+});
