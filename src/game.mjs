@@ -1,9 +1,9 @@
 export const VERSION = 21;
 export const SAVE_KEY = 'goodnight-next-stop.run.v7';
 export const DIFFICULTIES = {
-  relaxed: { name: '舒缓', hp: 1, damage: 1, reward: 1 },
-  standard: { name: '标准', hp: 1.3, damage: 1.22, reward: 1.15 },
-  challenge: { name: '挑战', hp: 1.62, damage: 1.46, reward: 1.35 },
+  relaxed: { name: '舒缓', hint: '适合体验剧情，治疗与护盾保持完整效果。', hp: 1, damage: 1, hpDepth: .018, damageDepth: .012, turnDamage: 0, healing: 1, guardPierce: 0, recovery: 1, levelHeal: 6, reward: 1 },
+  standard: { name: '标准', hint: '敌人会逐回合增强，10% 伤害穿透护盾。', hp: 1.6, damage: 1.65, hpDepth: .032, damageDepth: .03, turnDamage: .1, healing: .65, guardPierce: .1, recovery: .5, levelHeal: 2, reward: 1.2 },
+  challenge: { name: '挑战', hint: '需要手动出牌与装备成长，22% 伤害穿透护盾。', hp: 2.05, damage: 2.08, hpDepth: .045, damageDepth: .043, turnDamage: .18, healing: .45, guardPierce: .22, recovery: 0, levelHeal: 0, reward: 1.45 },
 };
 export const CARDS = {
   slash: { name: '轻声问候', school: '倾听', type: 'attack', cost: 1, damage: 7, icon: 'heart', flavor: '一句问候，是故事愿意开始的地方。' },
@@ -164,19 +164,19 @@ export const REWARDS = ['riposte', 'leech', 'quick', 'nova', 'fortify', 'echo', 
 export const CHARACTERS = {
   uncle: {
     name: '大叔', role: '夜班店长', trait: '认真听你说',
-    description: '每回合首次发现弱点时，额外抽 1 张牌。',
-    schools: ['倾听', '书信'], style: '观察弱点，再连续出牌',
+    description: '每回合第一次使用能强化后续攻击的牌时，额外抽 1 张牌。',
+    schools: ['倾听', '书信'], style: '先强化伤害，再连续出牌',
     starter: ['slash', 'slash', 'slash', 'guard', 'guard', 'mark', 'mark', 'heavy', 'quick', 'focus'],
   },
   gaigai: {
     name: '该该', role: '随车料理师', trait: '还有一杯热的',
-    description: '超过生命上限的治疗会变成暖意，下一张攻击牌造成等量额外伤害。',
-    schools: ['料理', '陪伴'], style: '边恢复边积攒爆发', recommended: true,
+    description: '生命已满时，多出的治疗会让下一张攻击牌增加同等伤害。',
+    schools: ['料理', '陪伴'], style: '边恢复，边强化下一次攻击', recommended: true,
     starter: ['slash', 'slash', 'slash', 'guard', 'guard', 'leech', 'mend', 'tea', 'riposte', 'focus'],
   },
   xiaoshuai: {
     name: '小帅', role: '梦境修补师', trait: '缝好裂缝',
-    description: '回合结束后保留一半护盾，护盾抵挡伤害时反击一半。',
+    description: '回合结束后保留 20% 护盾，护盾抵挡伤害时反击 35%。',
     schools: ['陪伴', '清醒梦'], style: '叠加护盾，稳步反击',
     starter: ['slash', 'slash', 'slash', 'guard', 'guard', 'guard', 'riposte', 'riposte', 'fortify', 'focus'],
   },
@@ -433,7 +433,8 @@ export function intent(s) {
   const enemy = enemyFor(s);
   const base = enemy.pattern[(s.turn - 1) % enemy.pattern.length];
   const depth = Math.max(0, s.mapRow || 0);
-  const multiplier = (1 + s.stage * .08 + depth * .012 + (s.elite ? .12 : 0) + (s.bossFight ? .22 : 0)) * (DIFFICULTIES[s.difficulty]?.damage || 1.22);
+  const difficulty = DIFFICULTIES[s.difficulty] || DIFFICULTIES.standard;
+  const multiplier = (1 + s.stage * .08 + depth * difficulty.damageDepth + Math.max(0, s.turn - 1) * difficulty.turnDamage + (s.elite ? .12 : 0) + (s.bossFight ? .22 : 0)) * difficulty.damage;
   return { ...base, value: Math.max(1, Math.round(base.value * multiplier)) };
 }
 export function enemyFor(s) {
@@ -469,10 +470,11 @@ function beginBattle(s) {
   s.warmth = 0; s.traitUsed = false;
   s.battleLog = [];
   s.block = (s.relic ? 2 : 0) + equipmentStats(s).block;
-  const depthScale = 1 + Math.max(0, s.mapRow) * .018;
+  const difficulty = DIFFICULTIES[s.difficulty] || DIFFICULTIES.standard;
+  const depthScale = 1 + Math.max(0, s.mapRow) * difficulty.hpDepth;
   const rankScale = s.bossFight ? 1.65 : s.elite ? 1.3 : 1;
   const foe = enemyFor(s);
-  const maxHp = Math.round(foe.hp * depthScale * rankScale * (DIFFICULTIES[s.difficulty]?.hp || 1.3));
+  const maxHp = Math.round(foe.hp * depthScale * rankScale * difficulty.hp);
   s.enemy = { hp: maxHp, maxHp, block: 0, mark: 0 };
   const grantedCards = Object.values(s.equipment).map(id => itemFor(s, id)?.skill).filter(Boolean).map(skill => `${skill}~gear`);
   s.draw = shuffle(s, [...s.deck, ...grantedCards]); s.hand = []; s.discard = []; s.exhaust = [];
@@ -482,7 +484,7 @@ function beginBattle(s) {
   log(s, '第 1 回合开始，能量恢复至 3。');
   logBattleStatus(s);
 }
-export function newRun(seed = Date.now() >>> 0, battleMode = 'auto', difficulty = 'standard', character = 'uncle') {
+export function newRun(seed = Date.now() >>> 0, battleMode = 'manual', difficulty = 'standard', character = 'uncle') {
   const inventory = [
     { id: 'gear-1', base: 'wornBlade', rarity: '普通', affixes: [], skill: null },
     { id: 'gear-2', base: 'travelCoat', rarity: '普通', affixes: [], skill: null },
@@ -498,38 +500,25 @@ export function newRun(seed = Date.now() >>> 0, battleMode = 'auto', difficulty 
 
 export function chooseAutoCard(s) {
   if (!s || s.phase !== 'combat') return -1;
-  const move = intent(s);
-  const incoming = move.kind === 'guard' ? 0 : move.value * (move.hits || 1);
-  let best = { index: -1, score: -Infinity };
-  s.hand.forEach((key, index) => {
-    const c = card(key);
-    if (c.cost > s.energy) return;
-    let score = 0;
-    const damage = attackPreview(s, key);
-    if (damage) score += damage * 3 + (damage >= s.enemy.hp ? 1000 : 0);
-    if (c.block) score += Math.min(c.block, Math.max(0, incoming - s.block)) * 2;
-    if (c.heal) score += Math.min(c.heal, s.maxHp - s.hp) * 2;
-    if (c.mark) score += c.mark * 7;
-    if (c.draw) score += c.draw * 6;
-    if (c.energy) score += c.energy * 8;
-    if (c.self) score -= c.self * (s.hp < 15 ? 8 : 1);
-    score -= c.cost;
-    if (score > best.score) best = { index, score };
-  });
-  return best.index;
+  const affordable = s.hand.map((key, index) => ({ index, card: card(key) })).filter(item => item.card.cost <= s.energy);
+  return affordable.find(item => item.card.cost === 0)?.index
+    ?? affordable.find(item => item.card.damage)?.index
+    ?? affordable[0]?.index
+    ?? -1;
 }
 function victory(s) {
   const foe = enemyFor(s);
-  const rewardScale = DIFFICULTIES[s.difficulty]?.reward || 1.15;
+  const difficulty = DIFFICULTIES[s.difficulty] || DIFFICULTIES.standard;
+  const rewardScale = difficulty.reward;
   s.victories++; s.gold += Math.round((24 + s.stage * 8 + (s.elite ? 16 : 0)) * rewardScale);
   const xpGain = Math.round((30 + s.stage * 14 + (s.elite ? 18 : 0)) * rewardScale);
   s.xp += xpGain;
   let levels = 0;
   while (s.xp >= s.nextXp) {
     s.xp -= s.nextXp; s.level++; levels++; s.nextXp = 45 + (s.level - 1) * 20;
-    s.maxHp += 6; s.hp += 6;
+    s.maxHp += 6; s.hp += difficulty.levelHeal;
   }
-  const recovery = 3 + equipmentStats(s).recovery + s.facilities.kitchen * 2;
+  const recovery = Math.round((3 + equipmentStats(s).recovery + s.facilities.kitchen * 2) * difficulty.recovery);
   s.hp = Math.min(s.maxHp, s.hp + recovery);
   const lootPool = CHAPTER_LOOT[s.stage];
   const dropWindow = s.bossFight ? 5 : s.elite ? 4 : 3;
@@ -657,8 +646,9 @@ export function transition(state, action) {
     }
     if (c.energy) s.energy += c.energy;
     const missingHp = s.maxHp - s.hp;
-    const healed = c.heal ? Math.min(c.heal, missingHp) : 0;
-    const overheal = c.heal ? Math.max(0, c.heal - healed) : 0;
+    const effectiveHealing = c.heal ? Math.max(1, Math.round(c.heal * (DIFFICULTIES[s.difficulty]?.healing || 1))) : 0;
+    const healed = c.heal ? Math.min(effectiveHealing, missingHp) : 0;
+    const overheal = c.heal ? Math.max(0, effectiveHealing - healed) : 0;
     if (c.heal) {
       s.hp += healed;
       if (s.character === 'gaigai' && overheal) s.warmth = Math.min(12, s.warmth + overheal);
@@ -711,13 +701,15 @@ export function transition(state, action) {
       let damage = 0;
       let absorbedTotal = 0;
       for (let i = 0; i < (move.hits || 1); i++) {
-        const absorbed = Math.min(s.block, move.value);
+        const guardPierce = DIFFICULTIES[s.difficulty]?.guardPierce || 0;
+        const blockableDamage = Math.max(0, move.value - Math.ceil(move.value * guardPierce));
+        const absorbed = Math.min(s.block, blockableDamage);
         s.block -= absorbed; damage += move.value - absorbed; absorbedTotal += absorbed;
       }
       s.hp = Math.max(0, s.hp - damage);
       log(s, `${foe.name}造成 ${damage} 点伤害。`);
       if (s.character === 'xiaoshuai' && absorbedTotal > 0) {
-        const reflected = Math.ceil(absorbedTotal * .5);
+        const reflected = Math.ceil(absorbedTotal * .35);
         s.enemy.hp = Math.max(0, s.enemy.hp - reflected);
         log(s, `小帅用护盾反击，造成 ${reflected} 点伤害。`);
       }
@@ -727,7 +719,7 @@ export function transition(state, action) {
     s.totalTurns++;
     if (s.hp <= 0) { s.phase = 'lost'; log(s, '旅途暂止于此。'); return s; }
     if (s.enemy.hp <= 0) { victory(s); return s; }
-    const retainedBlock = s.character === 'xiaoshuai' ? Math.floor(s.block * .5) : 0;
+    const retainedBlock = s.character === 'xiaoshuai' ? Math.floor(s.block * .2) : 0;
     s.turn++; s.energy = 3; s.traitUsed = false; s.block = retainedBlock + (s.relic ? 2 : 0) + equipmentStats(s).block;
     draw(s, Math.max(0, 5 - s.hand.length)); log(s, `第 ${s.turn} 回合开始，能量恢复至 3。`);
     return s;

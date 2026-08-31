@@ -180,7 +180,7 @@ function CardView({ cardKey, onClick, disabled = false, preview = 0, compact = f
 }
 
 function JourneySetup({ onBack, onStart }) {
-  const [mode, setMode] = useState('auto');
+  const [mode, setMode] = useState('manual');
   const [difficulty, setDifficulty] = useState('standard');
   const [character, setCharacter] = useState('gaigai');
   const [step, setStep] = useState('character');
@@ -206,10 +206,10 @@ function JourneySetup({ onBack, onStart }) {
         <div className="setting-group" onClick={event => handleSegmentFrame(event, ['auto', 'manual'], setMode)}><small>出牌方式</small><div className="mode-switch" aria-label="出牌方式">
           <button className={mode === 'auto' ? 'active' : ''} onPointerDown={capturePress} onClick={() => setMode('auto')}><Sparkles />自动出牌</button>
           <button className={mode === 'manual' ? 'active' : ''} onPointerDown={capturePress} onClick={() => setMode('manual')}><Swords />手动出牌</button>
-        </div></div>
+        </div><p className="difficulty-hint">{mode === 'auto' ? '基础托管不会判断敌方行动，适合舒缓难度。' : '根据敌方下一步行动安排攻击与防御。'}</p></div>
         <div className="setting-group" onClick={event => handleSegmentFrame(event, Object.keys(DIFFICULTIES), setDifficulty)}><small>旅程难度</small><div className="difficulty-switch" aria-label="旅程难度">
           {Object.entries(DIFFICULTIES).map(([key, item]) => <button key={key} className={difficulty === key ? 'active' : ''} onPointerDown={capturePress} onClick={() => setDifficulty(key)}>{item.name}</button>)}
-        </div></div>
+        </div><p className="difficulty-hint">{DIFFICULTIES[difficulty].hint}</p></div>
       </div>}
       {step === 'character'
         ? <button className="primary setup-start" onPointerDown={capturePress} onClick={() => setStep('rules')}>选择 {CHARACTERS[character].name}，下一步</button>
@@ -372,7 +372,7 @@ function Battle({ state, dispatch, outcome = null, battleSpeed = 1, onBattleSpee
           {playerDelta?.value > 0 && <div key={`heal-${playerDelta.key}`} className="player-heal-effect" aria-hidden="true"><i /><i /><i /></div>}
           <span className="battle-character-avatar pixel-art" style={characterStyle(state.character, 2.2)} aria-label={CHARACTERS[state.character].name} />
           <div className="player-health">
-            <div><span className="level-pill">Lv.{state.level}</span><small>{CHARACTERS[state.character].name}</small><Heart size={18} fill="currentColor" /><strong>{state.hp}</strong><span>/ {state.maxHp}</span>{state.block > 0 && <Tip text={state.character === 'xiaoshuai' ? '护盾优先抵消伤害；小帅会反击，并把剩余护盾的一半带到下回合。' : '护盾会优先抵消伤害，并在敌人行动后清空。'}><b><Shield size={15} />{state.block}</b></Tip>}</div>
+            <div><span className="level-pill">Lv.{state.level}</span><small>{CHARACTERS[state.character].name}</small><Heart size={18} fill="currentColor" /><strong>{state.hp}</strong><span>/ {state.maxHp}</span>{state.block > 0 && <Tip text={state.character === 'xiaoshuai' ? '护盾优先抵消伤害；小帅会反击 35%，并把剩余护盾的 20% 带到下回合。' : '护盾会优先抵消伤害，并在敌人行动后清空。'}><b><Shield size={15} />{state.block}</b></Tip>}</div>
             <Bar value={state.hp} max={state.maxHp} />
           </div>
           <Tip text="能量用于打出卡牌，每回合开始时恢复至 3。"><div key={`energy-${actionKey}`} className={`energy ${energyGain ? 'energy-gain' : ''}`}><Sparkles size={18} /><strong>{state.energy}</strong><span>/ 3</span></div></Tip>
@@ -740,7 +740,7 @@ function App() {
   }, [state?.phase, state?.played, battleSpeed]);
   const enemy = useMemo(() => state ? enemyFor(state) : null, [state]);
   const location = state?.phase === 'map' ? CHAPTERS[state.stage].name : state?.phase === 'camp' ? '亮灯的休息站' : state?.phase === 'checkpoint' ? CHECKPOINTS[state.mapRow + 1]?.title || '夜程路标' : state?.phase === 'event' ? '夜路岔口' : enemy?.place;
-  const startNew = (mode = 'auto', difficulty = 'standard', character = 'gaigai') => { const next = newRun(Date.now() >>> 0, mode, difficulty, character); localStorage.setItem(SAVE_KEY, serialize(next)); setSaved(next); setDrawer(false); setState(next); };
+  const startNew = (mode = 'manual', difficulty = 'standard', character = 'gaigai') => { const next = newRun(Date.now() >>> 0, mode, difficulty, character); localStorage.setItem(SAVE_KEY, serialize(next)); setSaved(next); setDrawer(false); setState(next); };
   const resetRun = () => { localStorage.removeItem(SAVE_KEY); setSaved(null); setDrawer(false); setState(null); };
   const dispatch = React.useCallback(action => setState(current => transition(current, action)), []);
   if (!state) return <Splash saved={saved} onContinue={() => setState(saved)} onNew={startNew} />;

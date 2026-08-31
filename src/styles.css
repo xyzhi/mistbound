@@ -1,4 +1,6 @@
 :root {
+  --safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --safe-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
   color-scheme: dark;
   font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
   color: #f2eee5;
@@ -46,8 +48,9 @@ button:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
 .splash-settings > div > small { margin-bottom: 6px; display: block; color: #d8d8cd; font-size: 10px; font-weight: 700; }
 .splash-settings .mode-switch, .splash-settings .difficulty-switch { width: 100%; margin-top: 0; }
 .splash-settings .mode-switch button, .splash-settings .difficulty-switch button { flex: 1; justify-content: center; padding-left: 8px; padding-right: 8px; }
+.difficulty-hint { margin: 7px 0 0; color: #b9c1b8; font-size: 10px; line-height: 1.45; }
 .setup-shade { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(7,15,16,.95) 0%, rgba(7,15,16,.78) 42%, rgba(7,15,16,.2) 78%), linear-gradient(0deg, rgba(7,15,16,.78), transparent 54%); }
-.setup-back { position: absolute; z-index: 3; top: max(18px, env(safe-area-inset-top)); left: 20px; border: 1px solid rgba(255,255,255,.32); background: rgba(7,15,16,.72); backdrop-filter: blur(8px); }
+.setup-back { position: absolute; z-index: 3; top: max(18px, var(--safe-top)); left: 20px; border: 1px solid rgba(255,255,255,.32); background: rgba(7,15,16,.72); backdrop-filter: blur(8px); }
 .setup-copy { position: relative; z-index: 2; min-height: 100svh; width: min(580px, 56vw); padding: clamp(72px, 12vh, 130px) 30px 44px clamp(24px, 6vw, 90px); display: flex; flex-direction: column; justify-content: center; }
 .setup-copy h1 { margin: 8px 0 6px; font-family: Georgia, "Songti SC", serif; font-size: clamp(52px, 7vw, 88px); line-height: 1; }
 .setup-copy > p { margin: 0 0 30px; color: #d1d2c9; font-size: 15px; }
@@ -114,7 +117,7 @@ button:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
 .destination-strip small { align-self: start; color: #aeb2ac; font-size: 9px; }
 .destination-strip button.active { border-color: var(--destination); background: rgba(24,39,38,.92); box-shadow: 0 4px 0 rgba(2,7,7,.72), inset 4px 0 var(--destination), inset 0 1px rgba(255,255,255,.12); }
 .destination-strip button:disabled { opacity: .42; cursor: not-allowed; }
-.hub-actions { position: absolute; z-index: 3; left: clamp(22px, 6vw, 92px); right: clamp(18px, 4vw, 58px); bottom: max(20px, env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(var(--action-count, 3), minmax(0, 220px)); gap: 8px; }
+.hub-actions { position: absolute; z-index: 3; left: clamp(22px, 6vw, 92px); right: clamp(18px, 4vw, 58px); bottom: max(20px, var(--safe-bottom)); display: grid; grid-template-columns: repeat(var(--action-count, 3), minmax(0, 220px)); gap: 8px; }
 .hub-actions button { min-height: 64px; padding: 9px 12px; display: flex; align-items: center; gap: 11px; color: #efede4; text-align: left; border: 2px solid rgba(231,235,222,.46); background: rgba(8,16,17,.88); box-shadow: 0 5px 0 rgba(2,7,7,.76), inset 0 1px rgba(255,255,255,.09); backdrop-filter: blur(9px); cursor: pointer; transition: transform .12s ease, filter .12s ease, box-shadow .12s ease; }
 .hub-actions button:hover, .destination-strip button:not(:disabled):hover { filter: brightness(1.15); }
 .hub-actions button:disabled { color: #898e89; cursor: default; }
@@ -259,7 +262,7 @@ button:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
 .card-rule { z-index: 1; margin-top: 3px; font-size: 11px; line-height: 1.4; }
 .card-preview { z-index: 1; margin-top: 5px; color: #8d3734; font-size: 10px; font-weight: 700; }
 .game-card em { z-index: 1; margin-top: auto; color: #66695f; font-family: Georgia, "Songti SC", serif; font-size: 9px; line-height: 1.3; }
-.turn-controls { min-height: 62px; padding: 8px clamp(18px, 4vw, 54px) max(8px, env(safe-area-inset-bottom)); display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); }
+.turn-controls { min-height: 62px; padding: 8px clamp(18px, 4vw, 54px) max(8px, var(--safe-bottom)); display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); }
 .turn-controls > span { color: var(--muted); font-size: 11px; }
 .speed-control { padding: 3px; display: flex; align-items: center; gap: 3px; border: 1px solid rgba(226,220,202,.24); background: #111816; }
 .speed-control small { padding: 0 5px; color: var(--muted); font-size: 9px; }
@@ -618,7 +621,7 @@ button:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
   .hub-character strong { font-size: 12px; }
   .hub-resources span { min-height: 30px; padding: 0 6px; }
   .hub-resources > .info-trigger:first-child { display: none; }
-  .hub-copy { position: absolute; left: 16px; right: 16px; bottom: calc(84px + env(safe-area-inset-bottom)); width: auto; margin: 0; }
+  .hub-copy { position: absolute; left: 16px; right: 16px; bottom: calc(84px + var(--safe-bottom)); width: auto; margin: 0; }
   .hub-copy h1 { margin-top: 4px; font-size: clamp(34px, 9vw, 48px); }
   .hub-copy > p { margin-bottom: 10px; font-size: 12px; }
   .mode-switch { width: 100%; }
@@ -632,7 +635,7 @@ button:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
   .destination-strip button > span { width: 25px; height: 25px; }
   .destination-strip b { font-size: 10px; }
   .destination-strip small { font-size: 8px; }
-  .hub-actions { position: absolute; left: 16px; right: 16px; bottom: max(12px, env(safe-area-inset-bottom)); margin: 0; grid-template-columns: repeat(var(--action-count, 3), minmax(0, 1fr)); gap: 7px; }
+  .hub-actions { position: absolute; left: 16px; right: 16px; bottom: max(12px, var(--safe-bottom)); margin: 0; grid-template-columns: repeat(var(--action-count, 3), minmax(0, 1fr)); gap: 7px; }
   .hub-actions button { min-width: 0; min-height: 58px; padding: 7px 8px; gap: 7px; }
   .hub-actions svg { flex: 0 0 auto; width: 17px; }
   .hub-actions b { font-size: 10px; }

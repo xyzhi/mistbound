@@ -3,3 +3,5 @@ dist/
 outputs/
 *.log
 *.zip
+__MACOSX/
+.DS_Store

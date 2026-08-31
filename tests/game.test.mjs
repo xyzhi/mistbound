@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { CARDS, CHARACTERS, CHAPTER_LOOT, CHECKPOINTS, ENCOUNTERS, ENEMIES, ITEMS, MAP_STEPS, attackPreview, buildChapterMap, card, chooseAutoCard, commissionStatus, enemyFor, equipmentStats, facilityCost, itemFor, newRun, rerollCost, restore, serialize, transition } from '../src/game.mjs';
+import { CARDS, CHARACTERS, CHAPTER_LOOT, CHECKPOINTS, DIFFICULTIES, ENCOUNTERS, ENEMIES, ITEMS, MAP_STEPS, attackPreview, buildChapterMap, card, chooseAutoCard, commissionStatus, enemyFor, equipmentStats, facilityCost, itemFor, newRun, rerollCost, restore, serialize, transition } from '../src/game.mjs';
 
 const leaveHub = (state, stage = 0) => transition(state, { type: 'depart', stage });
-const enterBattle = seed => transition(leaveHub(newRun(seed)), { type: 'node', id: 'c0r0n0' });
+const enterBattle = (seed, mode = 'manual') => transition(leaveHub(newRun(seed, mode)), { type: 'node', id: 'c0r0n0' });
 
 test('同一种子生成相同的初始手牌', () => {
   assert.deepEqual(enterBattle(20260827).hand, enterBattle(20260827).hand);
@@ -50,6 +50,7 @@ test('技能池包含多种主题，保留牌不会在回合结束时弃掉', ()
 });
 
 test('开局可选择自动或手动战斗，进入旅程后不能切换', () => {
+  assert.equal(newRun(1).battleMode, 'manual');
   assert.equal(newRun(1, 'auto').battleMode, 'auto');
   const manual = newRun(1, 'manual');
   assert.equal(manual.battleMode, 'manual');
@@ -78,14 +79,14 @@ test('该该把溢出治疗转为暖意并追加到下一次攻击', () => {
   const state = transition(leaveHub(newRun(82, 'manual', 'standard', 'gaigai')), { type: 'node', id: 'c0r0n0' });
   state.hp = state.maxHp - 1; state.hand = ['mend', 'slash']; state.energy = 3; state.enemy.hp = 100; state.enemy.maxHp = 100;
   const healed = transition(state, { type: 'play', index: 0 });
-  assert.equal(healed.warmth, 8);
+  assert.equal(healed.warmth, Math.round(card('mend').heal * DIFFICULTIES.standard.healing) - 1);
   const expected = attackPreview(healed, 'slash');
   const attacked = transition(healed, { type: 'play', index: 0 });
   assert.equal(100 - attacked.enemy.hp, expected);
   assert.equal(attacked.warmth, 0);
 });
 
-test('小帅会用护盾反击并保留一半剩余护盾', () => {
+test('小帅会用护盾反击并保留部分剩余护盾', () => {
   const state = transition(leaveHub(newRun(83, 'manual', 'standard', 'xiaoshuai')), { type: 'node', id: 'c0r0n0' });
   state.block = 30; state.enemy.hp = 100; state.enemy.maxHp = 100;
   const next = transition(state, { type: 'end' });
@@ -94,13 +95,19 @@ test('小帅会用护盾反击并保留一半剩余护盾', () => {
 });
 
 test('自动战斗会选择可用牌并持续推进', () => {
-  let state = enterBattle(23);
+  let state = enterBattle(23, 'auto');
   const index = chooseAutoCard(state);
   assert.ok(index >= 0);
   assert.ok(card(state.hand[index]).cost <= state.energy);
   const next = transition(state, { type: 'auto' });
   assert.equal(next.played, 1);
   assert.ok(next.battleLog.some(line => line.includes('你打出')));
+});
+
+test('自动托管优先攻击，不会代替玩家精确防御', () => {
+  const state = enterBattle(230, 'auto');
+  state.hand = ['guard', 'slash']; state.energy = 1;
+  assert.equal(chooseAutoCard(state), 1);
 });
 
 test('每章提供八种非首领遭遇，首领保持独立', () => {
@@ -313,6 +320,21 @@ test('开局难度贯穿整局且会改变敌人强度', () => {
   const standardBattle = transition(leaveHub(standard), { type: 'node', id: 'c0r0n0' });
   const relaxedBattle = transition(leaveHub(relaxed), { type: 'node', id: 'c0r0n0' });
   assert.ok(standardBattle.enemy.maxHp > relaxedBattle.enemy.maxHp);
+});
+
+test('标准和挑战难度会降低治疗并让部分伤害穿透护盾', () => {
+  const relaxed = enterBattle(551, 'manual');
+  relaxed.difficulty = 'relaxed'; relaxed.hp = 40; relaxed.hand = ['mend']; relaxed.energy = 1;
+  const relaxedHeal = transition(relaxed, { type: 'play', index: 0 }).hp - relaxed.hp;
+  const challenge = structuredClone(relaxed);
+  challenge.difficulty = 'challenge';
+  const challengeHeal = transition(challenge, { type: 'play', index: 0 }).hp - challenge.hp;
+  assert.ok(relaxedHeal > challengeHeal);
+
+  relaxed.hand = []; relaxed.block = 100;
+  challenge.hand = []; challenge.block = 100;
+  assert.equal(transition(relaxed, { type: 'end' }).hp, relaxed.hp);
+  assert.ok(transition(challenge, { type: 'end' }).hp < challenge.hp);
 });
 
 test('每十步路标提供恢复、强化和物资选择', () => {
