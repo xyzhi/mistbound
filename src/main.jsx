@@ -163,11 +163,12 @@ function BattleLogLine({ text, enemyName }) {
   });
 }
 
-function CardView({ cardKey, onClick, disabled = false, preview = 0, compact = false, active = false }) {
+function CardView({ cardKey, onClick, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, handIndex, disabled = false, preview = 0, compact = false, active = false, selected = false, detached = false, playReady = false, ghost = false, style }) {
   const c = card(cardKey);
   const Icon = ICONS[c.icon] || Sparkles;
+  const interactive = Boolean(onClick || onPointerDown);
   return (
-    <button className={`game-card ${c.type} ${c.equipmentGranted ? 'equipment-granted' : ''} ${compact ? 'compact' : ''} ${active ? 'auto-active' : ''} ${onClick ? '' : 'read-only'}`} onClick={onClick} disabled={disabled}>
+    <button className={`game-card ${c.type} ${c.equipmentGranted ? 'equipment-granted' : ''} ${compact ? 'compact' : ''} ${active ? 'auto-active' : ''} ${selected ? 'selected' : ''} ${detached ? 'detached' : ''} ${playReady ? 'play-ready' : ''} ${ghost ? 'throw-ghost' : ''} ${interactive ? '' : 'read-only'}`} style={style} data-hand-index={handIndex} tabIndex={ghost ? -1 : undefined} aria-hidden={ghost || undefined} onClick={onClick} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel} disabled={disabled}>
       <span className="card-cost">{c.cost}</span>
       <span className="card-school">{c.equipmentGranted ? '装备技' : c.school}</span>
       <span className="card-art pixel-art" style={cardAtlasStyle(cardKey)}><i className="card-category"><Icon size={compact ? 12 : 14} strokeWidth={1.8} /></i></span>
@@ -283,6 +284,20 @@ function CamperHub({ state, dispatch, onDrawer, onWorkshop, onGuests }) {
 function Battle({ state, dispatch, outcome = null, battleSpeed = 1, onBattleSpeed }) {
   const { open: tipOpen } = React.useContext(TooltipContext);
   const [tutorialStep, setTutorialStep] = useState(0);
+  const [selectedCard, setSelectedCard] = useState(-1);
+  const [dragX, setDragX] = useState(0);
+  const [dragLift, setDragLift] = useState(0);
+  const [cardDetached, setCardDetached] = useState(false);
+  const [playReady, setPlayReady] = useState(false);
+  const [throwGhosts, setThrowGhosts] = useState([]);
+  const handGesture = useRef(null);
+  const dissolveTimers = useRef(new Set());
+  const handGap = state.hand.length <= 1 ? 0
+    : state.hand.length === 2 ? 12
+      : state.hand.length === 3 ? 4
+        : state.hand.length === 4 ? -24
+          : state.hand.length === 5 ? -48
+            : -64;
   const enemy = enemyFor(state);
   const move = intent(state);
   const autoIndex = state.battleMode === 'auto' ? chooseAutoCard(state) : -1;
@@ -342,6 +357,93 @@ function Battle({ state, dispatch, outcome = null, battleSpeed = 1, onBattleSpee
     const element = battleLogRef.current;
     if (element) element.scrollTop = element.scrollHeight;
   }, [state.battleLog.length]);
+  useEffect(() => {
+    setSelectedCard(-1);
+    setDragX(0);
+    setDragLift(0);
+    setCardDetached(false);
+    setPlayReady(false);
+  }, [state.hand, state.turn]);
+  useEffect(() => () => dissolveTimers.current.forEach(timer => window.clearTimeout(timer)), []);
+  const playThreshold = () => Math.min(48, window.innerHeight * .065);
+  const beginCardGesture = (index, event) => {
+    if (state.battleMode === 'auto' || card(state.hand[index]).cost > state.energy) return;
+    event.preventDefault();
+    handGesture.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, index, detached: false };
+    setSelectedCard(index);
+    setDragX(0);
+    setDragLift(0);
+    setCardDetached(false);
+    setPlayReady(false);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+  const moveCardGesture = event => {
+    const gesture = handGesture.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    const swipeDistance = Math.max(0, gesture.startY - event.clientY);
+    const threshold = playThreshold();
+    if (gesture.detached) {
+      setDragX(event.clientX - gesture.detachX);
+      setDragLift(gesture.detachLift + event.clientY - gesture.detachY);
+      return;
+    }
+    setDragLift(-Math.min(threshold, swipeDistance));
+    if (swipeDistance >= threshold) {
+      gesture.detached = true;
+      gesture.detachX = event.clientX;
+      gesture.detachY = event.clientY;
+      gesture.detachLift = -threshold;
+      setCardDetached(true);
+      setPlayReady(true);
+      return;
+    }
+    const hand = event.currentTarget.closest('.hand');
+    const candidates = [...hand.querySelectorAll('.game-card:not(:disabled)')];
+    const nearest = candidates.reduce((best, element) => {
+      const rect = element.getBoundingClientRect();
+      const distance = Math.abs(event.clientX - (rect.left + rect.width / 2));
+      return !best || distance < best.distance ? { element, distance } : best;
+    }, null);
+    if (!nearest) return;
+    const index = Number(nearest.element.dataset.handIndex);
+    if (index !== gesture.index) {
+      gesture.index = index;
+      setSelectedCard(index);
+    }
+  };
+  const finishCardGesture = (event, cancelled = false) => {
+    const gesture = handGesture.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    handGesture.current = null;
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    const swipeDistance = gesture.startY - event.clientY;
+    if (!cancelled && (gesture.detached || swipeDistance >= playThreshold())) {
+      const hand = event.currentTarget.closest('.hand');
+      const playedElement = hand?.querySelector(`[data-hand-index="${gesture.index}"]`);
+      const rect = playedElement?.getBoundingClientRect();
+      const ghostId = `${Date.now()}-${gesture.index}`;
+      if (rect) {
+        setThrowGhosts(current => [...current, { id: ghostId, cardKey: state.hand[gesture.index], left: rect.left, top: rect.top, width: rect.width, height: rect.height }]);
+      }
+      setDragX(0);
+      setDragLift(0);
+      setCardDetached(false);
+      setPlayReady(false);
+      dispatch({ type: 'play', index: gesture.index });
+      const timer = window.setTimeout(() => {
+        setThrowGhosts(current => current.filter(item => item.id !== ghostId));
+        dissolveTimers.current.delete(timer);
+      }, 340);
+      dissolveTimers.current.add(timer);
+      return;
+    }
+    setDragX(0);
+    setDragLift(0);
+    setCardDetached(false);
+    setPlayReady(false);
+  };
   return (
     <>
       <section className="battlefield battle-speed-scope" style={{ '--battle-speed': battleSpeed }}>
@@ -382,11 +484,17 @@ function Battle({ state, dispatch, outcome = null, battleSpeed = 1, onBattleSpee
         {state.weak > 0 && <Tip text="虚弱会让你造成的基础伤害降低 25%，持续到下一回合。"><div className="status"><Moon size={14} />虚弱：伤害 -25%</div></Tip>}
         {state.character === 'gaigai' && state.warmth > 0 && <Tip text="该该溢出的治疗会变成暖意，下一张攻击牌会消耗全部暖意并追加等量伤害。"><div className="status warmth-status"><Flame size={14} />暖意 {state.warmth}</div></Tip>}
         <div className="combat-body">
-          <div className={`hand ${state.battleMode === 'auto' ? 'auto' : ''}`} aria-label="手牌">
-            {state.hand.map((key, index) => (
+          <div className={`hand ${state.battleMode === 'auto' ? 'auto' : ''}`} style={{ '--fan-gap': `${handGap}px` }} aria-label="手牌">
+            {state.hand.map((key, index) => {
+              const offset = index - (state.hand.length - 1) / 2;
+              return (
               <CardView key={`${key}-${index}`} cardKey={key} disabled={state.battleMode === 'auto' || card(key).cost > state.energy}
-                preview={attackPreview(state, key)} active={index === autoIndex} onClick={() => dispatch({ type: 'play', index })} />
-            ))}
+                preview={attackPreview(state, key)} active={index === autoIndex} selected={index === selectedCard} detached={index === selectedCard && cardDetached} playReady={index === selectedCard && playReady}
+                style={{ '--fan-offset': offset, '--fan-y': Math.abs(offset) * 7, '--fan-z': 20 - Math.round(Math.abs(offset)), '--drag-x': `${index === selectedCard ? dragX : 0}px`, '--drag-lift': `${index === selectedCard ? dragLift : 0}px` }}
+                handIndex={index} onPointerDown={event => beginCardGesture(index, event)} onPointerMove={moveCardGesture}
+                onPointerUp={event => finishCardGesture(event)} onPointerCancel={event => finishCardGesture(event, true)} />
+              );
+            })}
           </div>
           <aside className="battle-log" aria-live="polite">
             <h3><BookOpen size={16} />梦境记录</h3>
@@ -399,7 +507,8 @@ function Battle({ state, dispatch, outcome = null, battleSpeed = 1, onBattleSpee
           <button className="end-turn" disabled={state.battleMode === 'auto'} onClick={() => dispatch({ type: 'end' })}>{state.battleMode === 'auto' ? '自动行动' : '结束回合'}</button>
         </div>
       </section>
-      {!state.tutorialDone && <div className="tutorial-backdrop"><section className="tutorial-card"><span>{tutorialStep + 1} / 3</span><h2>{['打出卡牌', '观察能量与护盾', '抓住敌人弱点'][tutorialStep]}</h2><p>{['卡牌会造成伤害、回复生命或提供护盾。自动模式会替你选择，手动模式可点击卡牌。', '每张牌消耗能量；护盾会先抵消伤害。每回合开始时能量恢复至 3。', '部分卡牌会发现弱点：下次攻击每层额外造成 3 点伤害，攻击后清空。将敌人生命降到 0 即可获胜。'][tutorialStep]}</p><button className="primary" onClick={() => tutorialStep < 2 ? setTutorialStep(tutorialStep + 1) : dispatch({ type: 'tutorialDone' })}>{tutorialStep < 2 ? '下一步' : '开始战斗'}</button></section></div>}
+      {throwGhosts.map(item => <CardView key={item.id} cardKey={item.cardKey} ghost style={{ left: item.left, top: item.top, width: item.width, height: item.height }} />)}
+      {!state.tutorialDone && <div className="tutorial-backdrop"><section className="tutorial-card"><span>{tutorialStep + 1} / 3</span><h2>{['上滑打出卡牌', '观察能量与护盾', '抓住敌人弱点'][tutorialStep]}</h2><p>{['按住卡牌左右移动可换牌；上滑越过金色提示后，卡牌会脱离牌组并跟随手指，松手即可打出。自动模式会替你操作。', '每张牌消耗能量；护盾会先抵消伤害。每回合开始时能量恢复至 3。', '部分卡牌会发现弱点：下次攻击每层额外造成 3 点伤害，攻击后清空。将敌人生命降到 0 即可获胜。'][tutorialStep]}</p><button className="primary" onClick={() => tutorialStep < 2 ? setTutorialStep(tutorialStep + 1) : dispatch({ type: 'tutorialDone' })}>{tutorialStep < 2 ? '下一步' : '开始战斗'}</button></section></div>}
     </>
   );
 }
@@ -413,7 +522,7 @@ function Reward({ state, dispatch }) {
     {loot && <div className="loot-banner"><Backpack /><span><small>随机装备已放入背包</small><strong>{itemName(loot)}</strong><em>{itemLines(loot).join(' · ')}</em></span><b>{loot.rarity}</b></div>}
     <div className="reward-progress"><span>角色等级 {state.level}</span><span>{state.xp} / {state.nextXp} XP</span></div>
     <Bar value={state.xp} max={state.nextXp} tone="xp" />
-    <section className="reward-choice-block"><h3 className="reward-heading">挑选一张胜利奖励</h3><div className="reward-grid">{state.choices.map(key => <CardView key={key} cardKey={key} compact onClick={() => dispatch({ type: 'reward', key })} />)}</div><button className="text-button" onClick={() => dispatch({ type: 'reward', key: null })}>跳过奖励</button></section>
+    <section className="reward-choice-block"><h3 className="reward-heading">挑选一张胜利奖励</h3><div className="reward-grid">{state.choices.map((key, index) => { const offset = index - (state.choices.length - 1) / 2; return <CardView key={key} cardKey={key} compact style={{ '--fan-offset': offset, '--fan-y': Math.abs(offset) * 5, '--fan-z': 10 - Math.abs(offset) }} onClick={() => dispatch({ type: 'reward', key })} />; })}</div><button className="text-button" onClick={() => dispatch({ type: 'reward', key: null })}>跳过奖励</button></section>
     {reviewing && <BattleReview entries={state.battleLog} enemyName={enemyFor(state).name} onClose={() => setReviewing(false)} />}
   </Overlay>;
 }
