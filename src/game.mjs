@@ -1,4 +1,4 @@
-export const VERSION = 21;
+export const VERSION = 23;
 export const SAVE_KEY = 'goodnight-next-stop.run.v7';
 export const DIFFICULTIES = {
   relaxed: { name: '舒缓', hint: '适合体验剧情，治疗与护盾保持完整效果。', hp: 1, damage: 1, hpDepth: .018, damageDepth: .012, turnDamage: 0, healing: 1, guardPierce: 0, recovery: 1, levelHeal: 6, reward: 1 },
@@ -252,6 +252,57 @@ export const CHAPTER_LOOT = [
   ['mistCrown', 'duskBlade', 'wishScale', 'starCoupon', 'velvetMarketCoat', 'lanternVest', 'wishBox', 'luckyCoin'],
   ['starMantle', 'namelessSigil', 'platformWhistle', 'timetablePen', 'midnightUniform', 'lastTrainCoat', 'blankTicket', 'stationKey'],
 ];
+// The painted atlas is arranged by visual category, not by drop-pool order.
+export const EQUIPMENT_ART = {
+  wornBlade: 0,
+  silverBlade: 9,
+  crownBlade: 16,
+  travelCoat: 10,
+  mossPlate: 2,
+  oathPlate: 34,
+  emberCharm: 5,
+  moonCharm: 29,
+  mistCrown: 38,
+  duskBlade: { atlas: 'skill', index: 10 },
+  starMantle: 26,
+  namelessSigil: 40,
+  morningShears: 32,
+  gardenLedger: 1,
+  greenhouseApron: 2,
+  dewScarf: 4,
+  flowerPostcard: 6,
+  dawnButton: 5,
+  rainRadio: 15,
+  puddleCompass: 31,
+  blueUmbrella: 8,
+  windowCoat: 10,
+  rainTicket: 14,
+  thunderPin: 13,
+  bookmarkKnife: 24,
+  marginPencil: 16,
+  readerCardigan: 18,
+  cloudCape: 20,
+  lastPage: 22,
+  libraryKey: 40,
+  tideRecorder: 23,
+  shellPen: 24,
+  saltWindbreaker: 26,
+  reflectionShawl: 28,
+  moonShell: 29,
+  lighthouseBadge: 31,
+  wishScale: 32,
+  starCoupon: 38,
+  velvetMarketCoat: 34,
+  lanternVest: 36,
+  wishBox: 35,
+  luckyCoin: 37,
+  platformWhistle: 39,
+  timetablePen: 41,
+  midnightUniform: 42,
+  lastTrainCoat: 42,
+  blankTicket: 46,
+  stationKey: 47,
+};
 export function itemFor(state, id) {
   return state?.inventory?.find(item => item.id === id) || null;
 }
@@ -339,7 +390,7 @@ export function buildChapterMap(chapter = 0, mapSeed = chapter + 1) {
     const anchors = count === 2 ? [31, 69] : [20, 50, 80];
     for (let index = 0; index < count; index++) {
       const jitter = Math.round((routeRandom() - .5) * (count === 2 ? 18 : 12));
-      const type = row === 0 ? 'battle' : types[Math.floor(routeRandom() * types.length)];
+      const type = row === 0 || CHECKPOINT_STEPS.includes(row) ? 'battle' : types[Math.floor(routeRandom() * types.length)];
       nodes.push({ id: `c${chapter}r${row}n${index}`, row, x: Math.max(12, Math.min(88, anchors[index] + jitter)), type, links: [] });
     }
   }
@@ -491,7 +542,7 @@ export function newRun(seed = Date.now() >>> 0, battleMode = 'manual', difficult
   ];
   const selectedDifficulty = DIFFICULTIES[difficulty] ? difficulty : 'standard';
   const selectedCharacter = CHARACTERS[character] ? character : 'uncle';
-  const s = { version: VERSION, seed: seed >>> 0, mapSeed: seed >>> 0, character: selectedCharacter, warmth: 0, traitUsed: false, difficulty: selectedDifficulty, battleMode: battleMode === 'manual' ? 'manual' : 'auto', tutorialDone: false, phase: 'hub', stage: 0, unlocked: 0, clears: [0, 0, 0, 0, 0, 0], guestRewards: [false, false, false, false, false, false], level: 1, xp: 0, nextXp: 45, hp: 70, maxHp: 70, gold: 0, facilities: { kitchen: 0, workshop: 0, rooms: 0 }, commissionClaims: { battles: 0, steps: 0, stories: 0 }, stepsTraveled: 0, relic: false, elite: false, bossFight: false, foe: 0, checkpointRow: -1, inventory, equipment: { weapon: 'gear-1', armor: 'gear-2', bag: null, scarf: null, charm: null, decor: null }, nextItemId: 3, lastLoot: null, deck: [...CHARACTERS[selectedCharacter].starter], log: [], battleLog: [], played: 0, totalTurns: 0, victories: 0, mapRow: -1, currentNode: null, visited: [] };
+  const s = { version: VERSION, seed: seed >>> 0, mapSeed: seed >>> 0, character: selectedCharacter, warmth: 0, traitUsed: false, difficulty: selectedDifficulty, battleMode: battleMode === 'manual' ? 'manual' : 'auto', tutorialDone: false, phase: 'hub', stage: 0, unlocked: 0, clears: [0, 0, 0, 0, 0, 0], guestRewards: [false, false, false, false, false, false], chapterCheckpoints: [-1, -1, -1, -1, -1, -1], level: 1, xp: 0, nextXp: 45, hp: 70, maxHp: 70, gold: 0, facilities: { kitchen: 0, workshop: 0, rooms: 0 }, commissionClaims: { battles: 0, steps: 0, stories: 0 }, stepsTraveled: 0, relic: false, elite: false, bossFight: false, foe: 0, checkpointRow: -1, unsecuredLoot: [], inventory, equipment: { weapon: 'gear-1', armor: 'gear-2', bag: null, scarf: null, charm: null, decor: null }, nextItemId: 3, lastLoot: null, deck: [...CHARACTERS[selectedCharacter].starter], log: [], battleLog: [], played: 0, totalTurns: 0, victories: 0, mapRow: -1, currentNode: null, visited: [] };
   s.turn = 1; s.energy = 3; s.block = 0; s.weak = 0; s.enemy = { hp: 0, maxHp: 0, block: 0, mark: 0 };
   s.draw = []; s.hand = []; s.discard = []; s.exhaust = []; s.choices = [];
   log(s, '房车在花田边停稳，第一盏夜灯已经亮起。');
@@ -526,6 +577,8 @@ function victory(s) {
   const itemKey = lootPool[dropOffset];
   const dropped = rollItem(s, itemKey, s.elite || s.bossFight);
   s.inventory.unshift(dropped);
+  s.unsecuredLoot ||= [];
+  s.unsecuredLoot.push(dropped.id);
   s.lastLoot = dropped.id;
   s.phase = 'reward';
   const preferred = REWARDS.filter(key => CHARACTERS[s.character].schools.includes(CARDS[key].school));
@@ -540,18 +593,82 @@ function victory(s) {
 export function transition(state, action) {
   if (!state || !action) return state;
   const s = structuredClone(state);
+  if (action.type === 'debug') {
+    if (action.operation === 'gold') {
+      s.gold = Math.min(100000, s.gold + 1000);
+      log(s, '测试面板：获得 1000 枚旅币。');
+    } else if (action.operation === 'level') {
+      if (s.level >= 100) return state;
+      s.level++; s.xp = 0; s.nextXp = 45 + (s.level - 1) * 20; s.maxHp += 6; s.hp = s.maxHp;
+      log(s, `测试面板：角色提升至 ${s.level} 级。`);
+    } else if (action.operation === 'heal') {
+      s.hp = s.maxHp; s.energy = 3; s.block = 0; s.weak = 0;
+      log(s, '测试面板：生命与战斗资源已恢复。');
+    } else if (action.operation === 'unlock') {
+      s.unlocked = ENEMIES.length - 1;
+      log(s, '测试面板：全部章节已解锁。');
+    } else if (action.operation === 'item') {
+      if (!ITEMS[action.base]) return state;
+      const item = rollItem(s, action.base, true);
+      s.inventory.unshift(item); s.lastLoot = item.id;
+      log(s, `测试面板：获得「${itemName(item)}」。`);
+    } else if (action.operation === 'card') {
+      if (!CARDS[action.key] || action.key.endsWith('+')) return state;
+      s.deck.push(action.key);
+      log(s, `测试面板：「${card(action.key).name}」加入卡组。`);
+    } else if (action.operation === 'upgradeCards') {
+      let count = 0;
+      s.deck = s.deck.map(key => {
+        if (key.endsWith('+')) return key;
+        count++; return `${key}+`;
+      });
+      if (!count) return state;
+      log(s, `测试面板：强化了 ${count} 张技能牌。`);
+    } else if (action.operation === 'jump') {
+      const stage = action.stage;
+      const row = action.row;
+      if (!Number.isInteger(stage) || stage < 0 || stage >= ENEMIES.length || ![-1, 9, 19, 29, 39, 48].includes(row)) return state;
+      const nodes = chapterMap(stage, s.mapSeed);
+      const node = row < 0 ? null : row === 48 ? nodes.find(candidate => candidate.row === 48) : nodes.find(candidate => candidate.id === `c${stage}r${row}checkpoint`);
+      if (row >= 0 && !node) return state;
+      s.unlocked = Math.max(s.unlocked, stage); s.stage = stage; s.phase = 'map'; s.mapRow = row;
+      s.currentNode = node?.id || null; s.visited = node ? [node.id] : []; s.unsecuredLoot = [];
+      s.chapterCheckpoints ||= Array(ENEMIES.length).fill(-1);
+      if (row < 0) s.chapterCheckpoints[stage] = -1;
+      else if (row < 48) s.chapterCheckpoints[stage] = row;
+      else if (s.chapterCheckpoints[stage] < 0) s.chapterCheckpoints[stage] = 39;
+      s.checkpointRow = s.chapterCheckpoints[stage]; s.hp = s.maxHp; s.elite = false; s.bossFight = false;
+      log(s, `测试面板：跳转至「${CHAPTERS[stage].name}」${row < 0 ? '起点' : row === 48 ? '首领前' : `第 ${row + 1} 步路标`}。`);
+    } else return state;
+    return s;
+  }
   if (action.type === 'tutorialDone' && s.phase === 'combat') { s.tutorialDone = true; return s; }
   if (action.type === 'depart' && s.phase === 'hub') {
     if (!Number.isInteger(action.stage) || action.stage < 0 || action.stage > s.unlocked) return state;
-    s.stage = action.stage; s.phase = 'map'; s.mapSeed = Math.floor(random(s) * 4294967296) >>> 0; s.mapRow = -1; s.currentNode = null; s.visited = []; s.checkpointRow = -1;
+    const checkpoint = s.chapterCheckpoints?.[action.stage] ?? -1;
+    const checkpointNode = checkpoint >= 0 ? `c${action.stage}r${checkpoint}checkpoint` : null;
+    s.stage = action.stage; s.phase = 'map'; s.mapRow = checkpoint; s.currentNode = checkpointNode; s.visited = checkpointNode ? [checkpointNode] : []; s.checkpointRow = checkpoint; s.unsecuredLoot = [];
     s.hp = s.maxHp; s.elite = false; s.bossFight = false;
-    log(s, `日落前抵达「${CHAPTERS[s.stage].name}」，今晚的梦境路线已经出现。`);
+    log(s, checkpointNode ? `通过第 ${checkpoint + 1} 步夜程路标返回「${CHAPTERS[s.stage].name}」。` : `日落前抵达「${CHAPTERS[s.stage].name}」，今晚的梦境路线已经出现。`);
     return s;
   }
   if (action.type === 'returnHub' && s.phase === 'map') {
+    let lostItemName = null;
+    const atCheckpoint = s.mapRow === s.checkpointRow;
+    const equipped = new Set(Object.values(s.equipment).filter(Boolean));
+    const candidates = (s.unsecuredLoot || []).filter(id => itemFor(s, id) && !equipped.has(id));
+    if (!atCheckpoint && candidates.length) {
+      const lostId = candidates[Math.floor(random(s) * candidates.length)];
+      const lostItem = itemFor(s, lostId);
+      lostItemName = itemName(lostItem);
+      s.inventory = s.inventory.filter(item => item.id !== lostId);
+      if (s.lastLoot === lostId) s.lastLoot = null;
+    }
     s.phase = 'hub'; s.mapRow = -1; s.currentNode = null; s.visited = []; s.checkpointRow = -1;
+    s.unsecuredLoot = [];
     s.hp = s.maxHp; s.elite = false; s.bossFight = false;
     log(s, '收起梦境地图，回到亮着灯的房车。');
+    if (lostItemName) log(s, `匆忙撤离梦境，遗失了本段夜程获得的「${lostItemName}」。`);
     return s;
   }
   if (action.type === 'auto' && s.phase === 'combat' && s.battleMode === 'auto') {
@@ -731,8 +848,11 @@ export function transition(state, action) {
     if (s.bossFight) {
       s.clears[s.stage]++;
       s.unlocked = Math.min(ENEMIES.length - 1, Math.max(s.unlocked, s.stage + 1));
+      s.chapterCheckpoints ||= Array(ENEMIES.length).fill(-1);
+      s.chapterCheckpoints[s.stage] = -1;
+      s.mapSeed = Math.floor(random(s) * 4294967296) >>> 0;
       s.mapRow = -1; s.currentNode = null; s.visited = [];
-      s.checkpointRow = -1;
+      s.checkpointRow = -1; s.unsecuredLoot = [];
       s.phase = 'hub'; s.elite = false; s.bossFight = false;
       log(s, `房车平安返回。${CHAPTERS[s.stage].name}探索次数：${s.clears[s.stage]}。`);
       return s;
@@ -809,7 +929,8 @@ export function transition(state, action) {
     } else if (action.choice === 'finalSupplies') {
       s.gold += 60; log(s, '装满最后一格行囊，获得 60 枚旅币。');
     }
-    s.checkpointRow = s.mapRow;
+    s.chapterCheckpoints ||= Array(ENEMIES.length).fill(-1);
+    s.checkpointRow = s.mapRow; s.chapterCheckpoints[s.stage] = s.mapRow; s.unsecuredLoot = [];
     s.phase = 'map'; return s;
   }
   return state;
@@ -884,6 +1005,12 @@ export function restore(raw) {
       s.character = 'uncle';
       s.warmth = 0;
       s.traitUsed = false;
+      s.version = 21;
+    }
+    if (s?.version === 21) { s.unsecuredLoot = []; s.version = 22; }
+    if (s?.version === 22) {
+      s.chapterCheckpoints = Array(ENEMIES.length).fill(-1);
+      if (Number.isInteger(s.checkpointRow) && s.checkpointRow >= 0 && Number.isInteger(s.stage)) s.chapterCheckpoints[s.stage] = s.checkpointRow;
       s.version = VERSION;
     }
     const int = (n, min, max) => Number.isInteger(n) && n >= min && n <= max;
@@ -894,6 +1021,7 @@ export function restore(raw) {
     if (!s.facilities || !['kitchen', 'workshop', 'rooms'].every(key => int(s.facilities[key], 0, 3))) return null;
     if (!s.commissionClaims || !['battles', 'steps', 'stories'].every(key => int(s.commissionClaims[key], 0, 10000)) || !int(s.stepsTraveled, 0, 1000000)) return null;
     if (!Array.isArray(s.guestRewards) || s.guestRewards.length !== GUESTS.length || !s.guestRewards.every(value => typeof value === 'boolean')) return null;
+    if (!Array.isArray(s.chapterCheckpoints) || s.chapterCheckpoints.length !== ENEMIES.length || !s.chapterCheckpoints.every(row => row === -1 || CHECKPOINT_STEPS.includes(row + 1))) return null;
     if (!int(s.maxHp, 70, 700) || !int(s.hp, 0, s.maxHp) || !int(s.gold, 0, 100000)) return null;
     if (!int(s.seed, 0, 4294967295) || !int(s.mapSeed, 0, 4294967295) || !int(s.turn, 1, 10000) || !int(s.energy, 0, 100) || !int(s.block, 0, 10000) || !int(s.weak, 0, 1)) return null;
     if (![s.deck, s.hand, s.draw, s.discard, s.exhaust].every(validCards) || s.deck.length < 10 || s.hand.length > 9) return null;
@@ -904,6 +1032,7 @@ export function restore(raw) {
     const validAffix = affix => affix && AFFIXES.some(definition => definition.key === affix.key) && int(affix.value, 1, 20) && typeof affix.prefix === 'string';
     const validItem = item => item && typeof item.id === 'string' && /^gear-\d+$/.test(item.id) && ITEMS[item.base] && RARITIES.some(rarity => rarity.name === item.rarity) && Array.isArray(item.affixes) && item.affixes.length <= 4 && item.affixes.every(validAffix) && (item.skill === null || REWARDS.includes(item.skill));
     if (!Array.isArray(s.inventory) || s.inventory.length > 200 || !s.inventory.every(validItem) || new Set(s.inventory.map(item => item.id)).size !== s.inventory.length) return null;
+    if (!Array.isArray(s.unsecuredLoot) || s.unsecuredLoot.length > 200 || !s.unsecuredLoot.every(id => typeof id === 'string' && itemFor(s, id)) || new Set(s.unsecuredLoot).size !== s.unsecuredLoot.length) return null;
     if (!int(s.nextItemId, 1, 1000000)) return null;
     if (!s.equipment || !Object.keys(SLOT_LABELS).every(slot => s.equipment[slot] === null || (itemFor(s, s.equipment[slot]) && ITEMS[itemFor(s, s.equipment[slot]).base].slot === slot))) return null;
     if (s.lastLoot !== null && !itemFor(s, s.lastLoot)) return null;

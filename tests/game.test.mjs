@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { CARDS, CHARACTERS, CHAPTER_LOOT, CHECKPOINTS, DIFFICULTIES, ENCOUNTERS, ENEMIES, ITEMS, MAP_STEPS, attackPreview, buildChapterMap, card, chooseAutoCard, commissionStatus, enemyFor, equipmentStats, facilityCost, itemFor, newRun, rerollCost, restore, serialize, transition } from '../src/game.mjs';
+import { CARDS, CHARACTERS, CHAPTER_LOOT, CHECKPOINTS, DIFFICULTIES, ENCOUNTERS, ENEMIES, EQUIPMENT_ART, ITEMS, MAP_STEPS, attackPreview, buildChapterMap, card, chooseAutoCard, commissionStatus, enemyFor, equipmentStats, facilityCost, itemFor, newRun, rerollCost, restore, serialize, transition } from '../src/game.mjs';
 
 const leaveHub = (state, stage = 0) => transition(state, { type: 'depart', stage });
 const enterBattle = (seed, mode = 'manual') => transition(leaveHub(newRun(seed, mode)), { type: 'node', id: 'c0r0n0' });
@@ -158,6 +158,13 @@ test('六章各有八种装备底材并覆盖六个装备位', () => {
   }
 });
 
+test('每件装备都有明确的图集映射', () => {
+  assert.deepEqual(new Set(Object.keys(EQUIPMENT_ART)), new Set(Object.keys(ITEMS)));
+  for (const art of Object.values(EQUIPMENT_ART)) {
+    assert.ok(Number.isInteger(art) ? art >= 0 && art < 48 : art.atlas === 'skill' && art.index >= 0 && art.index < 25);
+  }
+});
+
 test('装备独有特性与自带技能会真实进入战斗规则', () => {
   const state = newRun(315, 'manual');
   state.inventory.push({ id: 'gear-3', base: 'morningShears', rarity: '普通', affixes: [], skill: ITEMS.morningShears.skill || null });
@@ -274,6 +281,61 @@ test('普通战斗后继续本章路线，不会提前跳章', () => {
   assert.ok(['combat', 'camp', 'event', 'checkpoint'].includes(next.phase));
 });
 
+test('普通节点返回房车会随机遗失一件本段获得且未装备的物品', () => {
+  const state = leaveHub(newRun(130));
+  const protectedItem = { id: 'gear-3', base: 'gardenLedger', rarity: '普通', affixes: [], skill: null };
+  const lostItem = { id: 'gear-4', base: 'greenhouseApron', rarity: '普通', affixes: [], skill: null };
+  state.inventory.push(protectedItem, lostItem);
+  state.unsecuredLoot = [protectedItem.id, lostItem.id];
+  state.equipment[ITEMS[protectedItem.base].slot] = protectedItem.id;
+  state.mapRow = 4; state.currentNode = 'c0r4n0'; state.visited = [state.currentNode];
+  const returned = transition(state, { type: 'returnHub' });
+  assert.equal(returned.phase, 'hub');
+  assert.ok(itemFor(returned, protectedItem.id));
+  assert.equal(itemFor(returned, lostItem.id), null);
+  assert.deepEqual(returned.unsecuredLoot, []);
+  assert.match(returned.log[0], /遗失了本段夜程获得的/);
+});
+
+test('返回房车后重新进入不会刷新当前地图', () => {
+  let state = newRun(2203, 'manual', 'standard');
+  state = transition(state, { type: 'depart', stage: 0 });
+  const originalSeed = state.mapSeed;
+  const originalMap = buildChapterMap(0, originalSeed);
+  state = { ...state, mapRow: 3, currentNode: 'c0r3n0', visited: ['c0r3n0'] };
+  state = transition(state, { type: 'returnHub' });
+  state = transition(state, { type: 'depart', stage: 0 });
+  assert.equal(state.mapSeed, originalSeed);
+  assert.deepEqual(buildChapterMap(0, state.mapSeed), originalMap);
+});
+
+test('路标返回房车不会遗失未装备物品', () => {
+  const state = leaveHub(newRun(131));
+  const storedItem = { id: 'gear-3', base: 'gardenLedger', rarity: '普通', affixes: [], skill: null };
+  state.inventory.push(storedItem); state.unsecuredLoot = [storedItem.id];
+  state.mapRow = 9; state.checkpointRow = 9; state.currentNode = 'c0r9checkpoint'; state.visited = [state.currentNode];
+  const returned = transition(state, { type: 'returnHub' });
+  assert.ok(itemFor(returned, storedItem.id));
+  assert.deepEqual(returned.unsecuredLoot, []);
+});
+
+test('激活路标后可从房车传送回来且下一步固定进入战斗', () => {
+  let state = leaveHub(newRun(132, 'manual'));
+  state.mapRow = 9; state.currentNode = 'c0r9checkpoint'; state.visited = [state.currentNode]; state.phase = 'checkpoint';
+  state = transition(state, { type: 'checkpoint', choice: 'rest' });
+  assert.equal(state.chapterCheckpoints[0], 9);
+  state = transition(state, { type: 'returnHub' });
+  state = transition(state, { type: 'depart', stage: 0 });
+  assert.equal(state.mapRow, 9);
+  assert.equal(state.checkpointRow, 9);
+  assert.equal(state.currentNode, 'c0r9checkpoint');
+  assert.deepEqual(state.visited, ['c0r9checkpoint']);
+  const checkpoint = buildChapterMap(0, state.mapSeed).find(node => node.id === state.currentNode);
+  assert.ok(checkpoint.links.length > 0);
+  const battle = transition(state, { type: 'node', id: checkpoint.links[0] });
+  assert.equal(battle.phase, 'combat');
+});
+
 test('地图只允许沿连线前进，事件选择会返回地图', () => {
   const state = leaveHub(newRun(19));
   assert.equal(transition(state, { type: 'node', id: 'c0boss' }), state);
@@ -300,6 +362,36 @@ test('六个区域每次探索五十步且每步最多三个选择', () => {
     assert.equal(steps, MAP_STEPS);
     assert.equal(current.type, 'boss');
   }
+});
+
+test('起点和每个路标后的第一步都固定为战斗', () => {
+  for (let chapter = 0; chapter < 6; chapter++) {
+    const nodes = buildChapterMap(chapter, 500 + chapter);
+    for (const row of [0, 10, 20, 30, 40]) {
+      const choices = nodes.filter(node => node.row === row);
+      assert.ok(choices.length > 0);
+      assert.ok(choices.every(node => node.type === 'battle'));
+    }
+  }
+});
+
+test('隐藏测试面板操作不会破坏存档并可跳转路标', () => {
+  let state = newRun(818, 'manual');
+  state = transition(state, { type: 'debug', operation: 'gold' });
+  state = transition(state, { type: 'debug', operation: 'level' });
+  state = transition(state, { type: 'debug', operation: 'item', base: 'morningShears' });
+  state = transition(state, { type: 'debug', operation: 'card', key: 'mend' });
+  state = transition(state, { type: 'debug', operation: 'upgradeCards' });
+  state = transition(state, { type: 'debug', operation: 'jump', stage: 3, row: 19 });
+  assert.equal(state.gold, 1000);
+  assert.equal(state.level, 2);
+  assert.ok(state.inventory.some(item => item.base === 'morningShears'));
+  assert.ok(state.deck.every(key => key.endsWith('+')));
+  assert.equal(state.phase, 'map');
+  assert.equal(state.stage, 3);
+  assert.equal(state.currentNode, 'c3r19checkpoint');
+  assert.equal(state.chapterCheckpoints[3], 19);
+  assert.deepEqual(restore(serialize(state)), state);
 });
 
 test('不同路线种子会生成不规则但始终可达的地图', () => {
@@ -385,6 +477,7 @@ test('战败后本局结束，不能从路标直接复活', () => {
 
 test('击败区域 Boss 后返回房车并解锁下一站', () => {
   const state = leaveHub(newRun(37, 'manual'));
+  const originalMapSeed = state.mapSeed;
   state.mapRow = 48; state.currentNode = 'c0r48n1'; state.visited = ['c0r48n1'];
   const boss = transition(state, { type: 'node', id: 'c0boss' });
   assert.equal(boss.bossFight, true);
@@ -396,6 +489,7 @@ test('击败区域 Boss 后返回房车并解锁下一站', () => {
   assert.equal(hub.clears[0], 1);
   assert.equal(hub.mapRow, -1);
   assert.deepEqual(hub.visited, []);
+  assert.notEqual(hub.mapSeed, originalMapSeed);
 });
 
 test('已通关区域可以反复探索并累计次数', () => {
@@ -431,6 +525,12 @@ test('存档可恢复，异常存档会被拒绝', () => {
   threeSlotSave.version = 18;
   threeSlotSave.equipment = { weapon: 'gear-1', armor: 'gear-2', charm: null };
   assert.deepEqual(Object.keys(restore(serialize(threeSlotSave)).equipment), ['weapon', 'armor', 'bag', 'scarf', 'charm', 'decor']);
+  const versionTwentyOne = structuredClone(state);
+  versionTwentyOne.version = 21; delete versionTwentyOne.unsecuredLoot;
+  assert.deepEqual(restore(serialize(versionTwentyOne)).unsecuredLoot, []);
+  const versionTwentyTwo = structuredClone(state);
+  versionTwentyTwo.version = 22; versionTwentyTwo.stage = 2; versionTwentyTwo.checkpointRow = 19; delete versionTwentyTwo.chapterCheckpoints;
+  assert.equal(restore(serialize(versionTwentyTwo)).chapterCheckpoints[2], 19);
   assert.equal(restore('{"version":999}'), null);
   assert.equal(restore('not-json'), null);
 });
