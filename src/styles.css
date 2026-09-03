@@ -309,6 +309,19 @@ button:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
 .map-actions { display: grid; gap: 6px; pointer-events: auto; }
 .map-actions button { min-width: 76px; box-shadow: 0 3px 0 rgba(0,0,0,.45), inset 0 1px rgba(255,255,255,.06); }
 .map-actions button:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0,0,0,.45); }
+.journey-cards-backdrop { position: fixed; z-index: 80; inset: 0; display: grid; place-items: center; padding: calc(16px + var(--platform-top)) 16px max(16px, var(--safe-bottom)); background: rgba(3, 7, 6, .78); }
+.journey-cards-dialog { width: min(620px, 100%); max-height: min(720px, calc(100svh - var(--platform-top) - var(--safe-bottom) - 32px)); padding: 18px; overflow: hidden; color: #edf1e9; border: 1px solid rgba(198, 218, 177, .45); background: #151d1a; box-shadow: 0 18px 54px rgba(0,0,0,.58); }
+.journey-cards-dialog > header { margin-bottom: 14px; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.journey-cards-dialog h2 { margin: 3px 0; font-family: Georgia, "Songti SC", serif; font-size: 28px; }
+.journey-cards-dialog header small { color: var(--gold); font-weight: 800; }
+.journey-cards-dialog header p { margin: 0; color: var(--muted); font-size: 11px; }
+.journey-cards-dialog header button { min-width: 62px; min-height: 38px; color: #edf2e8; border: 1px solid rgba(214, 231, 189, .62); background: #23302b; box-shadow: 0 3px 0 #080c0a; cursor: pointer; }
+.journey-cards-grid { max-height: min(570px, calc(100svh - var(--platform-top) - var(--safe-bottom) - 150px)); padding: 4px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: 9px; overflow-y: auto; }
+.journey-cards-grid .game-card.compact { width: 100%; min-width: 0; height: 176px; }
+.journey-cards-empty { min-height: 220px; display: grid; place-content: center; justify-items: center; gap: 8px; color: var(--muted); text-align: center; }
+.journey-cards-empty svg { width: 34px; color: var(--gold); }
+.journey-cards-empty strong { color: #e8ece4; }
+.journey-cards-empty span { font-size: 11px; }
 .map-scroll { position: absolute; z-index: 2; inset: 108px 0 38px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #59645e transparent; }
 .route-map { position: relative; left: 50%; width: min(620px, calc(100% - 32px)); transform: translateX(-50%); }
 .route-map svg { position: absolute; z-index: 0; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
@@ -323,6 +336,7 @@ button:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
 .map-node.elite { border-color: #88744e; }
 .map-node.boss { width: 42px; height: 42px; color: #c98873; border-color: #9f514b; }
 .map-node.camp { color: #b1a66f; }
+.map-node.memory { color: #d0a8d8; border-color: rgba(191, 143, 202, .58); background: #241d27; }
 .map-node.event { color: #a999bc; }
 .map-node.checkpoint { width: 38px; height: 38px; color: var(--gold); border-color: rgba(209, 173, 100, .72); background: #29271e; }
 .map-node.visited { color: #54605a; border-color: #34403a; background: #111715; }
@@ -389,6 +403,13 @@ button:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
 .confirm-actions button { min-height: 48px; }
 .confirm-danger { color: #fff0eb; border: 1px solid #d98a81; background: #884b46; box-shadow: 0 4px 0 #4e2926, inset 0 1px rgba(255,255,255,.12); cursor: pointer; font-weight: 800; }
 .confirm-danger:active { transform: translateY(2px); box-shadow: 0 2px 0 #4e2926; }
+.skip-reward-confirm { width: min(380px, 100%); padding: 22px 22px 20px; }
+.skip-reward-confirm .confirm-icon { width: 44px; height: 44px; margin-bottom: 9px; }
+.skip-reward-confirm .confirm-icon svg { width: 22px; height: 22px; }
+.skip-reward-confirm h2 { max-width: 280px; margin: 6px auto 9px; font-size: 25px; line-height: 1.18; }
+.skip-reward-confirm p { max-width: 320px; margin-inline: auto; font-size: 11px; line-height: 1.6; }
+.skip-reward-confirm .confirm-actions { margin-top: 17px; }
+.skip-reward-confirm .confirm-actions button { min-height: 44px; font-size: 13px; }
 @keyframes confirm-in { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
 
 .overlay { position: fixed; inset: var(--app-header-height) 0 0; max-width: 100%; display: grid; grid-template-columns: minmax(280px, 1fr) minmax(0, .9fr); overflow: hidden; background: #111615; }
@@ -433,6 +454,15 @@ button:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
 .camp-choice span { display: grid; gap: 4px; }
 .camp-choice small { color: var(--muted); }
 .checkpoint-grid .camp-choice { border-left: 3px solid rgba(209, 173, 100, .55); }
+.memory-grid { max-height: min(54vh, 520px); padding: 4px 6px 10px 2px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; overflow-y: auto; scrollbar-width: thin; }
+.memory-choice { min-width: 0; padding: 8px 6px 10px; display: grid; justify-items: center; gap: 5px; color: #d9d7cd; border: 1px solid rgba(191, 143, 202, .28); background: rgba(28, 23, 31, .72); }
+.memory-choice .game-card { width: min(142px, 100%); }
+.memory-choice > strong { color: #e7cfec; font-size: 11px; }
+.memory-choice > span { color: var(--muted); font-size: 9px; }
+.memory-empty { min-height: 190px; padding: 28px 18px; display: grid; place-items: center; align-content: center; gap: 8px; color: #d8c2dc; border: 1px solid rgba(191, 143, 202, .3); background: rgba(28, 23, 31, .68); text-align: center; }
+.memory-empty svg { width: 34px; height: 34px; }
+.memory-empty p { margin: 0; color: var(--muted); font-size: 11px; }
+.memory-leave { width: 100%; min-height: 43px; margin-top: 10px; }
 
 .drawer-backdrop { position: fixed; z-index: 50; inset: 0; background: rgba(2, 5, 4, .72); }
 .drawer { position: absolute; top: 0; right: 0; width: min(440px, 100%); height: 100%; padding: calc(36px + var(--platform-top)) 28px max(24px, var(--safe-bottom)); overflow-y: auto; background: #171e1c; border-left: 1px solid var(--line); }
@@ -477,6 +507,7 @@ button:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
 .gear-score { position: absolute; z-index: 2; top: 10px; left: 10px; width: 25px; height: 25px; display: grid; place-items: center; color: #eef1e9; border: 1px solid rgba(255,255,255,.34); border-radius: 50%; background: #33473b; box-shadow: 0 2px 6px rgba(0,0,0,.28); font-size: 10px; font-weight: 800; }
 .gear-rarity { position: absolute; z-index: 2; top: 11px; right: 10px; padding: 2px 4px; color: #e8dfc8; border: 1px solid rgba(226,220,202,.2); background: rgba(34,44,40,.78); font-size: 7px; font-weight: 700; }
 .gear-card > .gear-icon { width: 58px; height: 58px; margin: 0 auto; flex: 0 0 auto; border: 0; background-color: transparent; box-shadow: none; }
+.gear-item-level { position: absolute; top: 6px; left: 6px; padding: 2px 4px; color: #d9ca9f; border: 1px solid rgba(217,202,159,.32); background: rgba(9,15,13,.78); font-size: 7px; font-weight: 800; }
 .gear-card > strong { width: 100%; min-height: 26px; display: grid; place-items: center; overflow: hidden; color: #f0eee6; font-size: 11px; line-height: 1.2; }
 .gear-core-stats { width: 100%; display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 5px; color: #a9c794; font-size: 8px; line-height: 1.2; }
 .gear-core-stats i { font-style: normal; white-space: nowrap; }
@@ -485,6 +516,7 @@ button:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
 .gear-skill-label b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gear-equipped-badge svg { width: 11px; height: 11px; }
 .gear-equipped-badge { position: absolute; z-index: 2; top: 8px; right: 8px; width: 20px; height: 20px; display: grid; place-items: center; color: #d8efc7; border: 1px solid rgba(169,200,145,.68); border-radius: 50%; background: #2d4739; }
+.new-badge { position: absolute; z-index: 4; right: 6px; bottom: 6px; padding: 2px 4px; color: #142019; border: 1px solid #f3ffb5; border-radius: 2px; background: #dfff73; box-shadow: 0 0 9px rgba(223,255,115,.42); font-size: 7px; font-style: normal; font-weight: 900; line-height: 1; }
 .gear-card .gear-category { right: 2px; bottom: 2px; width: 16px; height: 16px; opacity: .72; color: #e7ece4; border-color: rgba(255,255,255,.28); background: rgba(25,38,32,.86); box-shadow: 0 1px 3px rgba(0,0,0,.24); }
 .gear-card .gear-category svg { width: 9px; height: 9px; }
 .gear-icon { width: 44px; height: 44px; display: grid; place-items: center; color: var(--gear-accent, #c9b06f); border: 1px solid color-mix(in srgb, var(--gear-accent, #c9b06f), transparent 48%); background: color-mix(in srgb, var(--gear-accent, #c9b06f), transparent 92%); }
@@ -544,7 +576,8 @@ button:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
 .workshop-items { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 8px; }
 .workshop-card { min-width: 0; padding: 6px; border: 1px solid var(--line); background: #101714; }
 .workshop-card > .gear-card { width: 100%; }
-.workshop-card-actions { display: grid; gap: 5px; margin-top: 6px; }
+.workshop-card-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; margin-top: 6px; }
+.workshop-card-actions button:last-child { grid-column: 1 / -1; }
 .workshop-card-actions button { min-height: 39px; padding: 5px 4px; display: grid; grid-template-columns: 14px 1fr; grid-template-rows: auto auto; align-items: center; color: #e5e2d8; border: 1px solid var(--line); background: #1a2421; cursor: pointer; font-size: 9px; font-weight: 700; }
 .workshop-card-actions button:first-child { color: #f0cc85; }
 .workshop-card-actions button:disabled { opacity: .35; cursor: default; }
@@ -625,7 +658,7 @@ button:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
 .debug-section { margin-top: 12px; padding: 12px; border: 1px solid rgba(226, 220, 202, .19); background: rgba(7, 12, 10, .42); }
 .debug-section h3 { margin: 0 0 9px; color: #e9e5d8; font-size: 12px; }
 .debug-section label { min-width: 0; display: grid; gap: 5px; color: #9fa9a1; font-size: 9px; }
-.debug-section select { width: 100%; min-height: 38px; padding: 0 9px; color: #eef1ea; border: 1px solid rgba(213, 231, 192, .3); border-radius: 0; background: #17211e; font: inherit; font-size: 11px; }
+.debug-section select, .debug-section input { width: 100%; min-height: 38px; padding: 0 9px; color: #eef1ea; border: 1px solid rgba(213, 231, 192, .3); border-radius: 0; background: #17211e; font: inherit; font-size: 11px; }
 .debug-fields, .debug-buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
 .debug-section > label + button, .debug-section > label + .debug-buttons, .debug-fields + button { margin-top: 8px; }
 .debug-section button { min-height: 40px; padding: 7px 9px; color: #dce3d8; border: 1px solid rgba(213, 231, 192, .28); background: #1b2823; box-shadow: 0 2px 0 #080d0b; cursor: pointer; font-size: 10px; font-weight: 700; }
@@ -770,6 +803,11 @@ button:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
   .map-stats button { padding: 0 8px; font-size: 10px; }
   .map-actions { gap: 5px; }
   .map-actions button { min-width: 70px; min-height: 34px; }
+  .journey-cards-backdrop { padding: calc(10px + var(--platform-top)) 10px max(10px, var(--safe-bottom)); }
+  .journey-cards-dialog { max-height: calc(100svh - var(--platform-top) - var(--safe-bottom) - 20px); padding: 13px; }
+  .journey-cards-dialog h2 { font-size: 24px; }
+  .journey-cards-grid { max-height: calc(100svh - var(--platform-top) - var(--safe-bottom) - 132px); gap: 6px; }
+  .journey-cards-grid .game-card.compact { height: min(160px, 22vh); padding: 6px; }
   .map-scroll { inset: 82px 0 34px; }
   .route-map { width: calc(100% - 14px); }
   .map-node { width: 28px; height: 28px; }
@@ -783,6 +821,14 @@ button:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
   .overlay-shade { background: linear-gradient(0deg, #111615 55%, rgba(17, 22, 21, .05)); }
   .overlay-sheet { position: relative; height: 100%; min-height: 0; padding: 26vh 18px max(12px, var(--safe-bottom)); overflow: hidden; }
   .overlay-sheet h2 { font-size: 42px; }
+  .memory-grid { max-height: calc(100% - 184px); grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .memory-choice { padding: 5px 3px 7px; }
+  .memory-choice .game-card.compact { width: 100%; height: min(145px, 21vh); padding: 6px; }
+  .memory-choice .card-art { width: 52px; height: 52px; }
+  .memory-choice .game-card strong { min-height: 25px; font-size: 11px; }
+  .memory-choice .card-rule { font-size: 8px; }
+  .memory-choice > strong { font-size: 9px; }
+  .memory-choice > span { font-size: 8px; }
   .overlay.reward .overlay-art { height: 25%; }
   .overlay.reward .overlay-sheet { padding: 16vh 14px max(8px, var(--safe-bottom)); display: flex; flex-direction: column; }
   .overlay.reward .overlay-sheet h2 { margin: 2px 0 3px; font-size: clamp(54px, 16vw, 72px); }
@@ -804,6 +850,12 @@ button:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
   .reward-grid .card-rule { display: -webkit-box; overflow: hidden; font-size: 8px; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
   .text-button { padding: 4px 0; font-size: 10px; }
   .skip-reward-button { min-height: 42px; margin-top: 3px; padding: 0 16px; font-size: 11px; }
+  .skip-reward-confirm { width: min(350px, 92vw); padding: 18px 16px 16px; }
+  .skip-reward-confirm .confirm-icon { width: 40px; height: 40px; margin-bottom: 7px; }
+  .skip-reward-confirm h2 { max-width: 240px; margin: 5px auto 8px; font-size: 22px; line-height: 1.2; }
+  .skip-reward-confirm p { max-width: 290px; font-size: 10px; line-height: 1.55; }
+  .skip-reward-confirm .confirm-actions { margin-top: 14px; gap: 8px; }
+  .skip-reward-confirm .confirm-actions button { min-height: 42px; padding: 0 8px; font-size: 12px; }
   .battle-review-backdrop { padding: calc(12px + var(--platform-top)) 12px 12px; }
   .battle-review { max-height: 82vh; padding: 17px 15px; }
   .battle-review > header h2, .overlay-sheet .battle-review > header h2 { font-size: 27px; }
@@ -823,6 +875,7 @@ button:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
 }
 
 @media (max-width: 350px) {
+  .journey-cards-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .debug-backdrop { padding-left: 8px; padding-right: 8px; }
   .debug-panel { padding: 14px 12px; }
   .debug-status { grid-template-columns: repeat(2, 1fr); }

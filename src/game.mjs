@@ -1,4 +1,4 @@
-export const VERSION = 23;
+export const VERSION = 27;
 export const SAVE_KEY = 'goodnight-next-stop.run.v7';
 export const DIFFICULTIES = {
   relaxed: { name: '舒缓', hint: '适合体验剧情，治疗与护盾保持完整效果。', hp: 1, damage: 1, hpDepth: .018, damageDepth: .012, turnDamage: 0, healing: 1, guardPierce: 0, recovery: 1, levelHeal: 6, reward: 1 },
@@ -126,7 +126,6 @@ export const CHECKPOINTS = {
     text: '第一段夜路走完了。先稳住状态，再决定如何继续。',
     choices: [
       { key: 'rest', icon: 'heart', title: '靠窗睡一会儿', text: '回复 35% 生命' },
-      { key: 'upgrade', icon: 'sparkles', title: '整理卡牌', text: '强化 1 张未强化卡牌' },
       { key: 'supplies', icon: 'backpack', title: '补充沿途物资', text: '获得 30 枚旅币' },
     ],
   },
@@ -143,7 +142,6 @@ export const CHECKPOINTS = {
     title: '记忆放映室',
     text: '银幕会重放已经走过的选择，也允许你剪掉一段多余的镜头。',
     choices: [
-      { key: 'doubleUpgrade', icon: 'sparkles', title: '重新剪辑', text: '强化最多 2 张卡牌' },
       { key: 'trimDeck', icon: 'book', title: '剪掉重复片段', text: '移除 1 张基础问候卡' },
       { key: 'rememberCard', icon: 'moon', title: '带走一帧回忆', text: '获得 1 张随机卡牌' },
     ],
@@ -153,7 +151,6 @@ export const CHECKPOINTS = {
     text: '终点之前的最后一次停靠。把最需要的东西留在手边。',
     choices: [
       { key: 'deepRest', icon: 'heart', title: '睡到月亮西沉', text: '回复 50% 生命' },
-      { key: 'tripleUpgrade', icon: 'sparkles', title: '终夜整理', text: '强化最多 3 张卡牌' },
       { key: 'finalSupplies', icon: 'backpack', title: '装满最后一格行囊', text: '获得 60 枚旅币' },
     ],
   },
@@ -233,11 +230,28 @@ export const ITEMS = {
 };
 export const SLOT_LABELS = { weapon: '随身工具', armor: '旅行衣装', bag: '随行收纳', scarf: '保暖配饰', charm: '纪念物', decor: '房车摆件' };
 export const AFFIX_LABELS = { attack: '伤害', block: '护盾', recovery: '战后恢复' };
+export const ITEM_TIERS = [
+  { name: '普通底材', minLevel: 1, scale: 1 },
+  { name: '进阶底材', minLevel: 21, scale: 2.6 },
+  { name: '精英底材', minLevel: 41, scale: 6 },
+];
+export const SKILL_UNLOCKS = {
+  riposte: 0, leech: 0, quick: 0, fortify: 0,
+  nova: 1, tea: 1, listen: 1, nightRide: 1,
+  echo: 2, postcard: 2, photoAlbum: 2, unsent: 2,
+  risk: 3, kitchenLight: 3, stayAwhile: 3, lucidDoor: 3,
+  mend: 4, blanket: 4, morningCall: 4, goodnight: 4,
+};
 const AFFIXES = [
   { key: 'attack', prefix: '敏锐的', min: 1, max: 3 },
   { key: 'block', prefix: '安稳的', min: 1, max: 3 },
-  { key: 'recovery', prefix: '温热的', min: 1, max: 4 },
+  { key: 'recovery', prefix: '温热的', min: 1, max: 2 },
+  { key: 'firstStrike', prefix: '先声的', min: 1, max: 3 },
+  { key: 'healing', prefix: '甘甜的', min: 1, max: 2 },
+  { key: 'markPower', prefix: '洞察的', min: 1, max: 1 },
+  { key: 'skillPower', prefix: '守护的', min: 1, max: 2 },
 ];
+Object.assign(AFFIX_LABELS, { firstStrike: '首次攻击', healing: '治疗强化', markPower: '弱点强化', skillPower: '技能护盾' });
 const RARITIES = [
   { name: '普通', affixes: 0 },
   { name: '精良', affixes: 2 },
@@ -306,6 +320,24 @@ export const EQUIPMENT_ART = {
 export function itemFor(state, id) {
   return state?.inventory?.find(item => item.id === id) || null;
 }
+export function itemTier(item) {
+  const level = Math.max(1, item?.itemLevel || 1);
+  return ITEM_TIERS[level >= 41 ? 2 : level >= 21 ? 1 : 0];
+}
+export function itemBaseStats(item) {
+  if (!item || !ITEMS[item.base]) return { attack: 0, block: 0, recovery: 0, firstStrike: 0 };
+  const base = ITEMS[item.base];
+  const level = Math.max(1, item.itemLevel || 1);
+  const tier = itemTier(item);
+  const withinTier = (level - tier.minLevel) % 20;
+  const scale = tier.scale * (1 + withinTier * .025);
+  return {
+    attack: Math.round((base.attack || 0) * scale),
+    block: Math.round((base.block || 0) * scale),
+    recovery: Math.round((base.recovery || 0) * Math.sqrt(scale)),
+    firstStrike: Math.round((base.firstStrike || 0) * scale),
+  };
+}
 export function itemName(item) {
   if (!item) return '未知物品';
   const prefix = item.skill ? '会做梦的' : item.affixes?.[0]?.prefix;
@@ -314,19 +346,18 @@ export function itemName(item) {
 export function itemLines(item) {
   if (!item) return [];
   const base = ITEMS[item.base];
-  const totals = { attack: base.attack || 0, block: base.block || 0, recovery: base.recovery || 0 };
+  const totals = { ...itemBaseStats(item), healing: 0, markPower: 0, skillPower: 0 };
   for (const affix of item.affixes || []) totals[affix.key] += affix.value;
   const lines = Object.entries(totals).filter(([, value]) => value > 0).map(([key, value]) => `${AFFIX_LABELS[key]} +${value}`);
   if (base.trait) lines.push(base.trait);
-  if (item.skill) lines.push(`附带技能：${CARDS[item.skill].name}`);
+  if (item.skill) lines.push(`附带技能：${CARDS[item.skill].name} Lv.${item.skillLevel || 1}`);
   return lines;
 }
 export function itemScore(item) {
   if (!item) return 0;
-  const base = ITEMS[item.base];
-  const totals = { attack: base.attack || 0, block: base.block || 0, recovery: base.recovery || 0 };
+  const totals = { ...itemBaseStats(item), healing: 0, markPower: 0, skillPower: 0 };
   for (const affix of item.affixes || []) totals[affix.key] += affix.value;
-  return totals.attack * 3 + totals.block * 2 + totals.recovery * 2 + (base.firstStrike || 0) * 3 + (item.skill ? 12 : 0);
+  return totals.attack * 3 + totals.block * 2 + totals.recovery * 2 + totals.firstStrike * 3 + totals.healing * 2 + totals.markPower * 5 + totals.skillPower * 2 + (item.skill ? 12 + (item.skillLevel || 1) * 4 : 0);
 }
 export function salvageValue(item) {
   return [6, 12, 24, 48][Math.max(0, RARITIES.findIndex(rarity => rarity.name === item?.rarity))];
@@ -334,6 +365,12 @@ export function salvageValue(item) {
 export function rerollCost(item, workshopLevel = 0) {
   const base = [12, 24, 42, 72][Math.max(0, RARITIES.findIndex(rarity => rarity.name === item?.rarity))];
   return Math.max(6, Math.ceil(base * (1 - Math.min(3, workshopLevel) * .12)));
+}
+export function itemUpgradeCost(item) {
+  const level = Math.max(1, item?.itemLevel || 1);
+  if (level >= 41) return null;
+  const rarityScale = [1, 1.15, 1.35, 1.6][Math.max(0, RARITIES.findIndex(rarity => rarity.name === item?.rarity))];
+  return Math.ceil((level < 21 ? 120 : 360) * rarityScale);
 }
 export function facilityCost(level) { return [80, 160, 280][level] ?? null; }
 export function commissionStatus(s, key) {
@@ -345,30 +382,41 @@ export function commissionStatus(s, key) {
   };
   return definitions[key] || null;
 }
-function rollAffixes(s, count) {
+function rollAffixes(s, count, itemLevel = 1) {
   const affixes = [];
-  for (let i = 0; i < count; i++) {
-    const definition = AFFIXES[Math.floor(random(s) * AFFIXES.length)];
-    const tier = Math.floor(s.stage / 2);
-    const value = definition.min + Math.floor(random(s) * (definition.max - definition.min + 1)) + tier;
-    affixes.push({ key: definition.key, value, prefix: definition.prefix });
+  const pool = shuffle(s, AFFIXES);
+  const tier = Math.min(6, 1 + Math.floor((Math.max(1, itemLevel) - 1) / 10));
+  for (let i = 0; i < count && i < pool.length; i++) {
+    const definition = pool[i];
+    const rolled = definition.min + Math.floor(random(s) * (definition.max - definition.min + 1));
+    const value = rolled * tier;
+    affixes.push({ key: definition.key, value, tier, prefix: definition.prefix });
   }
   return affixes;
 }
+function itemLevelFor(s) {
+  const depth = Math.max(0, s.mapRow || 0);
+  const bonus = (s.elite ? 2 : 0) + (s.bossFight ? 4 : 0);
+  return Math.min(60, Math.max(1, s.stage * 10 + 1 + Math.floor(depth / 5) + Math.floor(random(s) * 3) + bonus));
+}
 function rollItem(s, base, boosted = false) {
-  const qualityRoll = random(s) + (boosted ? .2 : 0);
+  const itemLevel = itemLevelFor(s);
+  const qualityRoll = random(s) + s.stage * .035 + (boosted ? .22 : 0);
   const rarityIndex = qualityRoll > 1.06 ? 3 : qualityRoll > .78 ? 2 : qualityRoll > .42 ? 1 : 0;
   const rarity = RARITIES[rarityIndex];
-  const affixes = rollAffixes(s, rarity.affixes);
-  const skillChance = rarityIndex === 3 ? 1 : rarityIndex === 2 ? .35 : 0;
-  const preferred = REWARDS.filter(key => CHARACTERS[s.character]?.schools.includes(CARDS[key].school));
-  const skillPool = preferred.length && random(s) < .7 ? preferred : REWARDS;
+  const affixes = rollAffixes(s, rarity.affixes, itemLevel);
+  const skillChance = rarityIndex === 3 ? 1 : rarityIndex === 2 ? .45 : 0;
+  const unlockedSkills = REWARDS.filter(key => (SKILL_UNLOCKS[key] ?? 0) <= s.stage);
+  const preferred = unlockedSkills.filter(key => CHARACTERS[s.character]?.schools.includes(CARDS[key].school));
+  const skillPool = preferred.length && random(s) < .7 ? preferred : unlockedSkills;
   const skill = ITEMS[base].skill || (random(s) < skillChance ? skillPool[Math.floor(random(s) * skillPool.length)] : null);
-  return { id: `gear-${s.nextItemId++}`, base, rarity: rarity.name, affixes, skill };
+  const skillLevel = skill ? Math.min(10, 1 + Math.floor((itemLevel - 1) / 12) + (rarityIndex >= 2 ? 1 : 0)) : 0;
+  return { id: `gear-${s.nextItemId++}`, base, itemLevel, rarity: rarity.name, affixes, skill, skillLevel };
 }
 function storyItem(s, stage) {
   const base = CHAPTER_LOOT[stage][7];
-  return { id: `gear-${s.nextItemId++}`, base, rarity: '传奇', affixes: rollAffixes(s, 4), skill: REWARDS[(stage * 3 + s.clears[stage]) % REWARDS.length] };
+  const itemLevel = Math.min(60, (stage + 1) * 10);
+  return { id: `gear-${s.nextItemId++}`, base, itemLevel, rarity: '传奇', affixes: rollAffixes(s, 4, itemLevel), skill: REWARDS[(stage * 3 + s.clears[stage]) % REWARDS.length], skillLevel: Math.min(10, stage + 3) };
 }
 export function buildChapterMap(chapter = 0, mapSeed = chapter + 1) {
   const nodes = [];
@@ -380,7 +428,7 @@ export function buildChapterMap(chapter = 0, mapSeed = chapter + 1) {
     value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
     return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
   };
-  const types = ['battle', 'battle', 'event', 'camp', 'elite'];
+  const types = ['battle', 'battle', 'battle', 'event', 'camp', 'memory', 'elite'];
   for (let row = 0; row < MAP_STEPS - 1; row++) {
     if (CHECKPOINT_STEPS.includes(row + 1)) {
       nodes.push({ id: `c${chapter}r${row}checkpoint`, row, x: 50, type: 'checkpoint', links: [] });
@@ -413,23 +461,58 @@ export function buildChapterMap(chapter = 0, mapSeed = chapter + 1) {
 }
 export const MAP_NODES = buildChapterMap(0);
 export function chapterMap(chapter, mapSeed) { return buildChapterMap(chapter, mapSeed); }
+export function cardRank(key) {
+  const normalized = String(key || '').replace('~gear', '');
+  const match = normalized.match(/\+(\d*)$/);
+  if (!match) return 1;
+  return match[1] ? Math.max(2, Math.min(10, Number(match[1]))) : 2;
+}
+export function cardBaseKey(key) { return String(key || '').replace('~gear', '').replace(/\+\d*$/, ''); }
+export function rankedCardKey(key, rank, equipmentGranted = String(key || '').endsWith('~gear')) {
+  const baseKey = cardBaseKey(key);
+  const safeRank = Math.max(1, Math.min(10, rank || 1));
+  return `${baseKey}${safeRank > 1 ? `+${safeRank}` : ''}${equipmentGranted ? '~gear' : ''}`;
+}
+export function upgradeCardKey(key, amount = 1) { return rankedCardKey(key, cardRank(key) + amount); }
+export function skillRewardRank(s, key) {
+  const minRank = Math.min(8, Math.max(1, (s?.stage || 0) + 1));
+  let hash = ((s?.mapSeed ?? s?.seed ?? 1) ^ Math.imul((s?.mapRow ?? -1) + 2, 2654435761)) >>> 0;
+  for (const char of cardBaseKey(key)) hash = Math.imul(hash ^ char.charCodeAt(0), 2246822519) >>> 0;
+  const roll = hash % 100;
+  const offset = s?.bossFight ? (roll < 35 ? 1 : 2) : s?.elite ? (roll < 25 ? 0 : roll < 70 ? 1 : 2) : (roll < 50 ? 0 : roll < 85 ? 1 : 2);
+  return Math.min(10, minRank + offset);
+}
+function addOrUpgradeCard(s, key, minimumRank = 1) {
+  const baseKey = cardBaseKey(key);
+  const candidates = s.deck.map((cardKey, index) => ({ cardKey, index })).filter(entry => cardBaseKey(entry.cardKey) === baseKey && cardRank(entry.cardKey) < 10).sort((a, b) => cardRank(a.cardKey) - cardRank(b.cardKey));
+  if (candidates.length) {
+    const target = candidates[0];
+    s.deck[target.index] = upgradeCardKey(target.cardKey);
+    return { key: s.deck[target.index], upgraded: true };
+  }
+  const ranked = rankedCardKey(baseKey, minimumRank);
+  s.deck.push(ranked);
+  return { key: ranked, upgraded: false };
+}
 export function card(key) {
   const equipmentGranted = key.endsWith('~gear');
-  const normalized = equipmentGranted ? key.slice(0, -5) : key;
-  const upgraded = normalized.endsWith('+');
-  const baseKey = normalized.replace('+', '');
+  const rank = cardRank(key);
+  const upgraded = rank > 1;
+  const baseKey = cardBaseKey(key);
   const base = CARDS[baseKey];
   if (!base) throw new Error('Unknown card');
-  const c = { ...base, key, baseKey, upgraded, equipmentGranted };
+  const c = { ...base, key, baseKey, rank, upgraded, equipmentGranted };
   if (equipmentGranted) c.cost = 0;
-  if (upgraded) {
-    c.name += ' +';
-    if (c.damage) c.damage += 3;
-    if (c.block) c.block += 3;
-    if (c.heal) c.heal += 3;
-    if (c.mark) c.mark += 1;
-    if (c.energy) c.energy += 1;
-    if (c.self) c.self = 1;
+  if (rank > 1) {
+    const multiplier = 1 + (rank - 1) * .34;
+    c.name += ` +${rank}`;
+    if (c.damage) c.damage = Math.round(c.damage * multiplier);
+    if (c.block) c.block = Math.round(c.block * multiplier);
+    if (c.heal) c.heal = Math.round(c.heal * multiplier);
+    if (c.mark) c.mark += Math.floor((rank - 1) / 3);
+    if (c.energy && rank >= 8) c.energy += 1;
+    if (c.draw && rank >= 6) c.draw += 1;
+    if (c.self) c.self = Math.max(1, c.self - Math.floor(rank / 4));
   }
   return c;
 }
@@ -494,27 +577,40 @@ export function enemyFor(s) {
   const encounter = ENCOUNTERS[s.stage]?.[s.foe] || ENCOUNTERS[s.stage]?.[0];
   return { ...encounter, place: ENEMIES[s.stage].place };
 }
-export function attackPreview(s, key) {
+export function attackBreakdown(s, key) {
   const c = card(key);
-  if (!c.damage) return 0;
+  if (!c.damage) return { total: 0, normal: 0, weakpoint: 0 };
   const stats = equipmentStats(s);
   const baseDamage = c.damage + stats.attack + (s.played === 0 ? stats.firstStrike : 0);
   const base = s.weak > 0 ? Math.floor(baseDamage * .75) : baseDamage;
-  return base * (c.hits || 1) + s.enemy.mark * 3 + (s.character === 'gaigai' ? s.warmth || 0 : 0);
+  const hits = c.hits || 1;
+  let block = s.enemy.block;
+  let normal = 0;
+  let weakpoint = 0;
+  for (let index = 0; index < hits; index++) {
+    const normalDamage = base + (index === 0 && s.character === 'gaigai' ? s.warmth || 0 : 0);
+    const absorbed = Math.min(block, normalDamage);
+    block -= absorbed;
+    normal += normalDamage - absorbed;
+    if (index < s.enemy.mark) weakpoint += s.enemy.mark - index;
+  }
+  return { total: normal + weakpoint, normal, weakpoint };
 }
+export function attackPreview(s, key) { return attackBreakdown(s, key).total; }
 export function equipmentStats(s) {
   const equipped = s?.equipment || {};
   return Object.values(equipped).reduce((total, id) => {
     const instance = itemFor(s, id);
     const item = instance && ITEMS[instance.base];
     if (!item) return total;
-    total.attack += item.attack || 0;
-    total.block += item.block || 0;
-    total.recovery += item.recovery || 0;
+    const baseStats = itemBaseStats(instance);
+    total.attack += baseStats.attack;
+    total.block += baseStats.block;
+    total.recovery += baseStats.recovery;
+    total.firstStrike += baseStats.firstStrike;
     for (const affix of instance.affixes || []) total[affix.key] += affix.value;
-    total.firstStrike += item.firstStrike || 0;
     return total;
-  }, { attack: 0, block: 0, recovery: 0, firstStrike: 0 });
+  }, { attack: 0, block: 0, recovery: 0, firstStrike: 0, healing: 0, markPower: 0, skillPower: 0 });
 }
 function beginBattle(s) {
   s.phase = 'combat'; s.turn = 1; s.energy = 3; s.weak = 0;
@@ -527,7 +623,7 @@ function beginBattle(s) {
   const foe = enemyFor(s);
   const maxHp = Math.round(foe.hp * depthScale * rankScale * difficulty.hp);
   s.enemy = { hp: maxHp, maxHp, block: 0, mark: 0 };
-  const grantedCards = Object.values(s.equipment).map(id => itemFor(s, id)?.skill).filter(Boolean).map(skill => `${skill}~gear`);
+  const grantedCards = Object.values(s.equipment).map(id => itemFor(s, id)).filter(item => item?.skill).map(item => rankedCardKey(item.skill, item.skillLevel || 1, true));
   s.draw = shuffle(s, [...s.deck, ...grantedCards]); s.hand = []; s.discard = []; s.exhaust = [];
   s.choices = [];
   draw(s, 5);
@@ -537,12 +633,12 @@ function beginBattle(s) {
 }
 export function newRun(seed = Date.now() >>> 0, battleMode = 'manual', difficulty = 'standard', character = 'uncle') {
   const inventory = [
-    { id: 'gear-1', base: 'wornBlade', rarity: '普通', affixes: [], skill: null },
-    { id: 'gear-2', base: 'travelCoat', rarity: '普通', affixes: [], skill: null },
+    { id: 'gear-1', base: 'wornBlade', itemLevel: 1, rarity: '普通', affixes: [], skill: null, skillLevel: 0 },
+    { id: 'gear-2', base: 'travelCoat', itemLevel: 1, rarity: '普通', affixes: [], skill: null, skillLevel: 0 },
   ];
   const selectedDifficulty = DIFFICULTIES[difficulty] ? difficulty : 'standard';
   const selectedCharacter = CHARACTERS[character] ? character : 'uncle';
-  const s = { version: VERSION, seed: seed >>> 0, mapSeed: seed >>> 0, character: selectedCharacter, warmth: 0, traitUsed: false, difficulty: selectedDifficulty, battleMode: battleMode === 'manual' ? 'manual' : 'auto', tutorialDone: false, phase: 'hub', stage: 0, unlocked: 0, clears: [0, 0, 0, 0, 0, 0], guestRewards: [false, false, false, false, false, false], chapterCheckpoints: [-1, -1, -1, -1, -1, -1], level: 1, xp: 0, nextXp: 45, hp: 70, maxHp: 70, gold: 0, facilities: { kitchen: 0, workshop: 0, rooms: 0 }, commissionClaims: { battles: 0, steps: 0, stories: 0 }, stepsTraveled: 0, relic: false, elite: false, bossFight: false, foe: 0, checkpointRow: -1, unsecuredLoot: [], inventory, equipment: { weapon: 'gear-1', armor: 'gear-2', bag: null, scarf: null, charm: null, decor: null }, nextItemId: 3, lastLoot: null, deck: [...CHARACTERS[selectedCharacter].starter], log: [], battleLog: [], played: 0, totalTurns: 0, victories: 0, mapRow: -1, currentNode: null, visited: [] };
+  const s = { version: VERSION, seed: seed >>> 0, mapSeed: seed >>> 0, character: selectedCharacter, warmth: 0, traitUsed: false, difficulty: selectedDifficulty, battleMode: battleMode === 'manual' ? 'manual' : 'auto', tutorialDone: false, phase: 'hub', stage: 0, unlocked: 0, clears: [0, 0, 0, 0, 0, 0], guestRewards: [false, false, false, false, false, false], chapterCheckpoints: [-1, -1, -1, -1, -1, -1], level: 1, xp: 0, nextXp: 45, hp: 70, maxHp: 70, gold: 0, facilities: { kitchen: 0, workshop: 0, rooms: 0 }, commissionClaims: { battles: 0, steps: 0, stories: 0 }, stepsTraveled: 0, relic: false, elite: false, bossFight: false, foe: 0, checkpointRow: -1, unsecuredLoot: [], unsecuredCards: [], journeyCardDrops: [], journeyNewItems: [], journeyNewCards: [], inventory, equipment: { weapon: 'gear-1', armor: 'gear-2', bag: null, scarf: null, charm: null, decor: null }, nextItemId: 3, lastLoot: null, deck: [...CHARACTERS[selectedCharacter].starter], log: [], battleLog: [], played: 0, totalTurns: 0, victories: 0, mapRow: -1, currentNode: null, visited: [] };
   s.turn = 1; s.energy = 3; s.block = 0; s.weak = 0; s.enemy = { hp: 0, maxHp: 0, block: 0, mark: 0 };
   s.draw = []; s.hand = []; s.discard = []; s.exhaust = []; s.choices = [];
   log(s, '房车在花田边停稳，第一盏夜灯已经亮起。');
@@ -579,11 +675,28 @@ function victory(s) {
   s.inventory.unshift(dropped);
   s.unsecuredLoot ||= [];
   s.unsecuredLoot.push(dropped.id);
+  s.journeyNewItems ||= [];
+  s.journeyNewItems.push(dropped.id);
   s.lastLoot = dropped.id;
   s.phase = 'reward';
-  const preferred = REWARDS.filter(key => CHARACTERS[s.character].schools.includes(CARDS[key].school));
-  const others = REWARDS.filter(key => !preferred.includes(key));
-  s.choices = [...shuffle(s, preferred).slice(0, 2), ...shuffle(s, others).slice(0, 1)];
+  const unlockedSkills = REWARDS.filter(key => (SKILL_UNLOCKS[key] ?? 0) <= s.stage);
+  const preferred = unlockedSkills.filter(key => CHARACTERS[s.character].schools.includes(CARDS[key].school));
+  const others = unlockedSkills.filter(key => !preferred.includes(key));
+  const owned = new Set(s.deck.map(cardBaseKey));
+  const fresh = unlockedSkills.filter(key => !owned.has(key));
+  const firstFresh = shuffle(s, fresh.filter(key => preferred.includes(key)))[0] || shuffle(s, fresh)[0];
+  s.choices = firstFresh ? [firstFresh] : [];
+  const addChoice = pool => {
+    const candidate = shuffle(s, pool.filter(key => !s.choices.includes(key)))[0];
+    if (candidate) s.choices.push(candidate);
+  };
+  addChoice(preferred);
+  addChoice(others);
+  while (s.choices.length < 3) {
+    const before = s.choices.length;
+    addChoice(unlockedSkills);
+    if (s.choices.length === before) break;
+  }
   log(s, `击败${foe.name}，获得 ${xpGain} 点经验。`);
   if (levels) log(s, `店主升至 ${s.level} 级，生命上限提高。`);
   log(s, `获得${dropped.rarity}装备「${itemName(dropped)}」。`);
@@ -610,17 +723,31 @@ export function transition(state, action) {
     } else if (action.operation === 'item') {
       if (!ITEMS[action.base]) return state;
       const item = rollItem(s, action.base, true);
+      if (Number.isInteger(action.itemLevel) && action.itemLevel >= 1 && action.itemLevel <= 60) {
+        item.itemLevel = action.itemLevel;
+        const affixCount = RARITIES.find(rarity => rarity.name === item.rarity)?.affixes || 0;
+        item.affixes = rollAffixes(s, affixCount, item.itemLevel);
+        if (item.skill) item.skillLevel = Math.min(10, 1 + Math.floor((item.itemLevel - 1) / 12) + (affixCount >= 3 ? 1 : 0));
+      }
       s.inventory.unshift(item); s.lastLoot = item.id;
-      log(s, `测试面板：获得「${itemName(item)}」。`);
+      log(s, `测试面板：获得 Lv.${item.itemLevel}「${itemName(item)}」。`);
     } else if (action.operation === 'card') {
-      if (!CARDS[action.key] || action.key.endsWith('+')) return state;
-      s.deck.push(action.key);
-      log(s, `测试面板：「${card(action.key).name}」加入卡组。`);
+      if (!CARDS[action.key]) return state;
+      if (Number.isInteger(action.rank) && action.rank >= 1 && action.rank <= 10) {
+        const index = s.deck.findIndex(key => cardBaseKey(key) === action.key);
+        const ranked = rankedCardKey(action.key, index >= 0 ? Math.max(cardRank(s.deck[index]), action.rank) : action.rank);
+        if (index >= 0) s.deck[index] = ranked;
+        else s.deck.push(ranked);
+        log(s, `测试面板：「${card(ranked).name}」已设为 Lv.${cardRank(ranked)}。`);
+      } else {
+        const result = addOrUpgradeCard(s, action.key, Math.min(10, 1 + Math.floor(s.stage / 2)));
+        log(s, `测试面板：「${card(result.key).name}」${result.upgraded ? '获得升级' : '加入卡组'}。`);
+      }
     } else if (action.operation === 'upgradeCards') {
       let count = 0;
       s.deck = s.deck.map(key => {
-        if (key.endsWith('+')) return key;
-        count++; return `${key}+`;
+        if (cardRank(key) >= 10) return key;
+        count++; return upgradeCardKey(key);
       });
       if (!count) return state;
       log(s, `测试面板：强化了 ${count} 张技能牌。`);
@@ -632,7 +759,7 @@ export function transition(state, action) {
       const node = row < 0 ? null : row === 48 ? nodes.find(candidate => candidate.row === 48) : nodes.find(candidate => candidate.id === `c${stage}r${row}checkpoint`);
       if (row >= 0 && !node) return state;
       s.unlocked = Math.max(s.unlocked, stage); s.stage = stage; s.phase = 'map'; s.mapRow = row;
-      s.currentNode = node?.id || null; s.visited = node ? [node.id] : []; s.unsecuredLoot = [];
+      s.currentNode = node?.id || null; s.visited = node ? [node.id] : []; s.unsecuredLoot = []; s.unsecuredCards = []; s.journeyCardDrops = [];
       s.chapterCheckpoints ||= Array(ENEMIES.length).fill(-1);
       if (row < 0) s.chapterCheckpoints[stage] = -1;
       else if (row < 48) s.chapterCheckpoints[stage] = row;
@@ -647,28 +774,41 @@ export function transition(state, action) {
     if (!Number.isInteger(action.stage) || action.stage < 0 || action.stage > s.unlocked) return state;
     const checkpoint = s.chapterCheckpoints?.[action.stage] ?? -1;
     const checkpointNode = checkpoint >= 0 ? `c${action.stage}r${checkpoint}checkpoint` : null;
-    s.stage = action.stage; s.phase = 'map'; s.mapRow = checkpoint; s.currentNode = checkpointNode; s.visited = checkpointNode ? [checkpointNode] : []; s.checkpointRow = checkpoint; s.unsecuredLoot = [];
+    s.stage = action.stage; s.phase = 'map'; s.mapRow = checkpoint; s.currentNode = checkpointNode; s.visited = checkpointNode ? [checkpointNode] : []; s.checkpointRow = checkpoint; s.unsecuredLoot = []; s.unsecuredCards = []; s.journeyCardDrops = []; s.journeyNewItems = []; s.journeyNewCards = [];
     s.hp = s.maxHp; s.elite = false; s.bossFight = false;
     log(s, checkpointNode ? `通过第 ${checkpoint + 1} 步夜程路标返回「${CHAPTERS[s.stage].name}」。` : `日落前抵达「${CHAPTERS[s.stage].name}」，今晚的梦境路线已经出现。`);
     return s;
   }
   if (action.type === 'returnHub' && s.phase === 'map') {
     let lostItemName = null;
+    let lostCardName = null;
     const atCheckpoint = s.mapRow === s.checkpointRow;
     const equipped = new Set(Object.values(s.equipment).filter(Boolean));
-    const candidates = (s.unsecuredLoot || []).filter(id => itemFor(s, id) && !equipped.has(id));
+    const itemCandidates = (s.unsecuredLoot || []).filter(id => itemFor(s, id) && !equipped.has(id)).map(id => ({ type: 'item', id }));
+    const cardCandidates = (s.unsecuredCards || []).map((key, index) => ({ type: 'card', key, index }));
+    const candidates = [...itemCandidates, ...cardCandidates];
     if (!atCheckpoint && candidates.length) {
-      const lostId = candidates[Math.floor(random(s) * candidates.length)];
-      const lostItem = itemFor(s, lostId);
-      lostItemName = itemName(lostItem);
-      s.inventory = s.inventory.filter(item => item.id !== lostId);
-      if (s.lastLoot === lostId) s.lastLoot = null;
+      const lost = candidates[Math.floor(random(s) * candidates.length)];
+      if (lost.type === 'item') {
+        const lostItem = itemFor(s, lost.id);
+        lostItemName = itemName(lostItem);
+        s.inventory = s.inventory.filter(item => item.id !== lost.id);
+        s.journeyNewItems = (s.journeyNewItems || []).filter(id => id !== lost.id);
+        if (s.lastLoot === lost.id) s.lastLoot = null;
+      } else {
+        const deckIndex = s.deck.findIndex(key => key === lost.key);
+        if (deckIndex >= 0) s.deck.splice(deckIndex, 1);
+        const dropIndex = (s.journeyCardDrops || []).findIndex(key => key === lost.key);
+        if (dropIndex >= 0) s.journeyCardDrops.splice(dropIndex, 1);
+        lostCardName = `${card(lost.key).name} Lv.${cardRank(lost.key)}`;
+      }
     }
     s.phase = 'hub'; s.mapRow = -1; s.currentNode = null; s.visited = []; s.checkpointRow = -1;
-    s.unsecuredLoot = [];
+    s.unsecuredLoot = []; s.unsecuredCards = [];
     s.hp = s.maxHp; s.elite = false; s.bossFight = false;
     log(s, '收起梦境地图，回到亮着灯的房车。');
     if (lostItemName) log(s, `匆忙撤离梦境，遗失了本段夜程获得的「${lostItemName}」。`);
+    if (lostCardName) log(s, `匆忙撤离梦境，遗失了本段夜程获得的技能「${lostCardName}」。`);
     return s;
   }
   if (action.type === 'auto' && s.phase === 'combat' && s.battleMode === 'auto') {
@@ -687,10 +827,11 @@ export function transition(state, action) {
     s.foe = s.bossFight ? 0 : encounterSeed % encounterCount;
     if (['battle', 'elite', 'boss'].includes(node.type)) { beginBattle(s); return s; }
     if (node.type === 'camp') { s.phase = 'camp'; log(s, '路边的休息站还亮着一盏小灯。'); return s; }
+    if (node.type === 'memory') { s.phase = 'memory'; log(s, '抵达整理回忆站，可以将两张相同技能合成为更高等级。'); return s; }
     if (node.type === 'checkpoint') { s.phase = 'checkpoint'; log(s, `抵达第 ${node.row + 1} 步夜程路标，房车在梦境边缘停靠。`); return s; }
     s.phase = 'event'; log(s, '岔路深处传来杯碟与旅币碰撞的声音。'); return s;
   }
-  if (action.type === 'equip' && s.phase !== 'combat') {
+  if (action.type === 'equip' && s.phase === 'hub') {
     const instance = itemFor(s, action.key);
     const item = instance && ITEMS[instance.base];
     if (!item) return state;
@@ -706,8 +847,20 @@ export function transition(state, action) {
     const affixCount = RARITIES.find(rarity => rarity.name === instance.rarity)?.affixes || 0;
     if (!affixCount) return state;
     s.gold -= cost;
-    instance.affixes = rollAffixes(s, affixCount);
+    instance.affixes = rollAffixes(s, affixCount, instance.itemLevel);
     log(s, `花费 ${cost} 枚旅币，为「${itemName(instance)}」重抽了属性。`);
+    return s;
+  }
+  if (action.type === 'upgradeItem' && s.phase === 'hub') {
+    const instance = itemFor(s, action.key);
+    const cost = itemUpgradeCost(instance);
+    if (!instance || cost === null || s.gold < cost) return state;
+    s.gold -= cost;
+    instance.itemLevel = instance.itemLevel < 21 ? 21 : 41;
+    const affixCount = RARITIES.find(rarity => rarity.name === instance.rarity)?.affixes || 0;
+    instance.affixes = rollAffixes(s, affixCount, instance.itemLevel);
+    if (instance.skill) instance.skillLevel = Math.min(10, 1 + Math.floor((instance.itemLevel - 1) / 12) + (affixCount >= 3 ? 1 : 0));
+    log(s, `花费 ${cost} 枚旅币，将「${itemName(instance)}」升为${itemTier(instance).name}。`);
     return s;
   }
   if (action.type === 'salvage' && s.phase === 'hub') {
@@ -715,6 +868,7 @@ export function transition(state, action) {
     if (!instance || Object.values(s.equipment).includes(instance.id)) return state;
     const value = salvageValue(instance);
     s.inventory = s.inventory.filter(item => item.id !== instance.id);
+    s.journeyNewItems = (s.journeyNewItems || []).filter(id => id !== instance.id);
     if (s.lastLoot === instance.id) s.lastLoot = null;
     s.gold += value;
     log(s, `拆解「${itemName(instance)}」，回收 ${value} 枚旅币。`);
@@ -751,10 +905,12 @@ export function transition(state, action) {
     const key = s.hand[action.index], c = card(key);
     if (c.cost > s.energy) return state;
     s.hand.splice(action.index, 1); s.energy -= c.cost; s.played++;
-    if (c.block) s.block += c.block;
+    const stats = equipmentStats(s);
+    const gainedBlock = c.block ? c.block + stats.skillPower : 0;
+    if (gainedBlock) s.block += gainedBlock;
     let traitTriggered = false;
     if (c.mark) {
-      s.enemy.mark += c.mark;
+      s.enemy.mark += c.mark + stats.markPower;
       if (s.character === 'uncle' && !s.traitUsed) {
         s.traitUsed = true;
         traitTriggered = true;
@@ -763,7 +919,7 @@ export function transition(state, action) {
     }
     if (c.energy) s.energy += c.energy;
     const missingHp = s.maxHp - s.hp;
-    const effectiveHealing = c.heal ? Math.max(1, Math.round(c.heal * (DIFFICULTIES[s.difficulty]?.healing || 1))) : 0;
+    const effectiveHealing = c.heal ? Math.max(1, Math.round((c.heal + stats.healing) * (DIFFICULTIES[s.difficulty]?.healing || 1))) : 0;
     const healed = c.heal ? Math.min(effectiveHealing, missingHp) : 0;
     const overheal = c.heal ? Math.max(0, effectiveHealing - healed) : 0;
     if (c.heal) {
@@ -772,23 +928,30 @@ export function transition(state, action) {
     }
     if (c.self) s.hp = Math.max(0, s.hp - c.self);
     let damage = 0;
+    let weakpointDamage = 0;
+    let absorbedDamage = 0;
     const warmthBonus = c.damage && s.character === 'gaigai' ? s.warmth : 0;
     if (c.damage) {
       for (let i = 0; i < (c.hits || 1); i++) {
-        const stats = equipmentStats(s);
         const equippedDamage = c.damage + stats.attack + (s.played === 1 ? stats.firstStrike : 0);
-        const amount = (s.weak > 0 ? Math.floor(equippedDamage * .75) : equippedDamage) + s.enemy.mark * 3 + (i === 0 ? warmthBonus : 0);
-        s.enemy.mark = 0;
+        const amount = (s.weak > 0 ? Math.floor(equippedDamage * .75) : equippedDamage) + (i === 0 ? warmthBonus : 0);
+        const markBonus = s.enemy.mark > 0 ? s.enemy.mark : 0;
+        if (markBonus) s.enemy.mark--;
         const absorbed = Math.min(s.enemy.block, amount);
         s.enemy.block -= absorbed;
-        damage += amount - absorbed;
-        s.enemy.hp = Math.max(0, s.enemy.hp - (amount - absorbed));
+        absorbedDamage += absorbed;
+        const dealt = amount - absorbed + markBonus;
+        damage += dealt;
+        weakpointDamage += markBonus;
+        s.enemy.hp = Math.max(0, s.enemy.hp - dealt);
       }
     }
     const effects = [];
     if (c.damage) effects.push(`造成 ${damage} 点伤害`);
-    if (c.block) effects.push(`获得 ${c.block} 点护盾`);
-    if (c.mark) effects.push(`发现 ${c.mark} 层弱点${traitTriggered ? '，触发特性抽 1 张牌' : ''}`);
+    if (absorbedDamage) effects.push(`护盾抵消 ${absorbedDamage} 点`);
+    if (weakpointDamage) effects.push(`其中 ${weakpointDamage} 点弱点伤害无视护盾`);
+    if (gainedBlock) effects.push(`获得 ${gainedBlock} 点护盾`);
+    if (c.mark) effects.push(`发现 ${c.mark + stats.markPower} 层弱点${traitTriggered ? '，触发特性抽 1 张牌' : ''}`);
     if (c.heal) effects.push(`回复 ${healed} 点生命`);
     if (overheal && s.character === 'gaigai') effects.push(`积攒 ${overheal} 点暖意`);
     if (warmthBonus) { effects.push(`消耗暖意追加 ${warmthBonus} 点伤害`); s.warmth = 0; }
@@ -843,7 +1006,17 @@ export function transition(state, action) {
   }
   if (action.type === 'reward' && s.phase === 'reward') {
     if (action.key !== null && !s.choices.includes(action.key)) return state;
-    if (action.key) { s.deck.push(action.key); log(s, `${card(action.key).name}加入卡组。`); }
+    if (action.key) {
+      const result = { key: rankedCardKey(action.key, skillRewardRank(s, action.key)), upgraded: false };
+      s.deck.push(result.key);
+      s.unsecuredCards ||= [];
+      s.unsecuredCards.push(result.key);
+      s.journeyCardDrops ||= [];
+      s.journeyCardDrops.push(result.key);
+      s.journeyNewCards ||= [];
+      if (!s.journeyNewCards.includes(cardBaseKey(result.key))) s.journeyNewCards.push(cardBaseKey(result.key));
+      log(s, `获得新技能牌「${card(result.key).name}」，加入卡组。`);
+    }
     s.choices = [];
     if (s.bossFight) {
       s.clears[s.stage]++;
@@ -852,7 +1025,7 @@ export function transition(state, action) {
       s.chapterCheckpoints[s.stage] = -1;
       s.mapSeed = Math.floor(random(s) * 4294967296) >>> 0;
       s.mapRow = -1; s.currentNode = null; s.visited = [];
-      s.checkpointRow = -1; s.unsecuredLoot = [];
+      s.checkpointRow = -1; s.unsecuredLoot = []; s.unsecuredCards = [];
       s.phase = 'hub'; s.elite = false; s.bossFight = false;
       log(s, `房车平安返回。${CHAPTERS[s.stage].name}探索次数：${s.clears[s.stage]}。`);
       return s;
@@ -862,14 +1035,36 @@ export function transition(state, action) {
   if (action.type === 'camp' && s.phase === 'camp') {
     if (action.choice === 'rest') {
       const gain = Math.min(18, s.maxHp - s.hp); s.hp += gain; log(s, `在房车里小睡，回复 ${gain} 点生命。`);
-    } else if (action.choice === 'upgrade') {
-      const index = s.deck.findIndex(key => !key.endsWith('+') && card(key).type === 'attack');
-      if (index < 0) return state;
-      s.deck[index] += '+'; log(s, `${card(s.deck[index]).name}获得强化。`);
     } else if (action.choice === 'relic') {
       if (s.gold < 30 || s.relic) return state;
       s.gold -= 30; s.relic = true; log(s, '购入柔软靠枕：每回合开始获得 2 点护盾。');
     } else return state;
+    s.phase = 'map'; return s;
+  }
+  if (action.type === 'memory' && s.phase === 'memory') {
+    if (action.cardKey === null) { s.phase = 'map'; return s; }
+    const sourceKey = String(action.cardKey || '');
+    if (sourceKey.endsWith('~gear') || cardRank(sourceKey) >= 10 || !CARDS[cardBaseKey(sourceKey)]) return state;
+    const matches = s.deck.map((key, index) => ({ key, index })).filter(entry => entry.key === sourceKey);
+    if (matches.length < 2) return state;
+    const [first, second] = matches.slice(0, 2).map(entry => entry.index).sort((a, b) => b - a);
+    const name = card(sourceKey).name;
+    const replaceTrackedPair = list => {
+      let consumed = 0;
+      const kept = (list || []).filter(key => {
+        if (key === sourceKey && consumed < 2) { consumed++; return false; }
+        return true;
+      });
+      if (consumed) kept.push(upgradeCardKey(sourceKey));
+      return kept;
+    };
+    s.deck.splice(first, 1);
+    s.deck.splice(second, 1);
+    const upgradedKey = upgradeCardKey(sourceKey);
+    s.deck.push(upgradedKey);
+    s.unsecuredCards = replaceTrackedPair(s.unsecuredCards);
+    s.journeyCardDrops = replaceTrackedPair(s.journeyCardDrops);
+    log(s, `整理两张 Lv.${cardRank(sourceKey)}「${name}」，合成为 Lv.${cardRank(upgradedKey)}。`);
     s.phase = 'map'; return s;
   }
   if (action.type === 'event' && s.phase === 'event') {
@@ -884,25 +1079,22 @@ export function transition(state, action) {
     const step = s.mapRow + 1;
     const available = CHECKPOINTS[step]?.choices.map(choice => choice.key) || [];
     if (!available.includes(action.choice)) return state;
-    const upgradeCards = amount => {
-      let upgraded = 0;
-      for (let index = 0; index < s.deck.length && upgraded < amount; index++) {
-        if (!s.deck[index].endsWith('+')) { s.deck[index] += '+'; upgraded++; }
-      }
-      return upgraded;
-    };
     const addRandomCard = () => {
-      const key = REWARDS[Math.floor(random(s) * REWARDS.length)];
-      s.deck.push(key);
-      return card(key).name;
+      const pool = REWARDS.filter(key => (SKILL_UNLOCKS[key] ?? 0) <= s.stage);
+      const key = pool[Math.floor(random(s) * pool.length)];
+      const ranked = rankedCardKey(key, Math.min(10, 1 + Math.floor(s.stage / 2)));
+      s.deck.push(ranked);
+      s.unsecuredCards ||= [];
+      s.unsecuredCards.push(ranked);
+      s.journeyCardDrops ||= [];
+      s.journeyCardDrops.push(ranked);
+      s.journeyNewCards ||= [];
+      if (!s.journeyNewCards.includes(cardBaseKey(ranked))) s.journeyNewCards.push(cardBaseKey(ranked));
+      return card(ranked).name;
     };
     if (action.choice === 'rest') {
       const gain = Math.min(Math.ceil(s.maxHp * .35), s.maxHp - s.hp); s.hp += gain;
       log(s, `在夜程路标旁睡了一会儿，回复 ${gain} 点生命。`);
-    } else if (action.choice === 'upgrade') {
-      const index = s.deck.findIndex(key => !key.endsWith('+'));
-      if (index >= 0) { const name = card(s.deck[index]).name; s.deck[index] += '+'; log(s, `在路灯下整理卡组，「${name}」得到强化。`); }
-      else { s.gold += 20; log(s, '所有卡牌都已强化，整理出的旧物换得 20 枚旅币。'); }
     } else if (action.choice === 'supplies') {
       s.gold += 30; log(s, '补充沿途物资，获得 30 枚旅币。');
     } else if (action.choice === 'shopCard') {
@@ -913,8 +1105,6 @@ export function transition(state, action) {
     } else if (action.choice === 'shortRest') {
       const gain = Math.min(Math.ceil(s.maxHp * .2), s.maxHp - s.hp); s.hp += gain;
       log(s, `在杂货铺后休息片刻，回复 ${gain} 点生命。`);
-    } else if (action.choice === 'doubleUpgrade') {
-      const count = upgradeCards(2); log(s, count ? `重新剪辑记忆，强化了 ${count} 张卡牌。` : '所有卡牌都已强化。');
     } else if (action.choice === 'trimDeck') {
       const index = s.deck.findIndex(key => key === 'slash');
       if (index >= 0 && s.deck.length > 10) { s.deck.splice(index, 1); log(s, '剪掉一张重复的「轻声问候」，卡组变得更精炼。'); }
@@ -924,13 +1114,11 @@ export function transition(state, action) {
     } else if (action.choice === 'deepRest') {
       const gain = Math.min(Math.ceil(s.maxHp * .5), s.maxHp - s.hp); s.hp += gain;
       log(s, `在终夜整备站睡到月沉，回复 ${gain} 点生命。`);
-    } else if (action.choice === 'tripleUpgrade') {
-      const count = upgradeCards(3); log(s, count ? `完成终夜整理，强化了 ${count} 张卡牌。` : '所有卡牌都已强化。');
     } else if (action.choice === 'finalSupplies') {
       s.gold += 60; log(s, '装满最后一格行囊，获得 60 枚旅币。');
     }
     s.chapterCheckpoints ||= Array(ENEMIES.length).fill(-1);
-    s.checkpointRow = s.mapRow; s.chapterCheckpoints[s.stage] = s.mapRow; s.unsecuredLoot = [];
+    s.checkpointRow = s.mapRow; s.chapterCheckpoints[s.stage] = s.mapRow; s.unsecuredLoot = []; s.unsecuredCards = [];
     s.phase = 'map'; return s;
   }
   return state;
@@ -1011,11 +1199,31 @@ export function restore(raw) {
     if (s?.version === 22) {
       s.chapterCheckpoints = Array(ENEMIES.length).fill(-1);
       if (Number.isInteger(s.checkpointRow) && s.checkpointRow >= 0 && Number.isInteger(s.stage)) s.chapterCheckpoints[s.stage] = s.checkpointRow;
+      s.version = 23;
+    }
+    if (s?.version === 23) {
+      for (const item of s.inventory || []) {
+        const chapter = ITEMS[item.base]?.chapter;
+        item.itemLevel = Math.min(60, Math.max(1, item.itemLevel || (Number.isInteger(chapter) ? chapter * 10 + 1 : 1)));
+        item.skillLevel = item.skill ? Math.min(10, Math.max(1, item.skillLevel || 1 + Math.floor((item.itemLevel - 1) / 12))) : 0;
+        item.affixes = (item.affixes || []).map(affix => ({ ...affix, tier: Math.min(6, Math.max(1, affix.tier || 1 + Math.floor((item.itemLevel - 1) / 10))) }));
+      }
+      s.version = 24;
+    }
+    if (s?.version === 24) {
+      s.journeyNewItems = [];
+      s.journeyNewCards = [];
+      s.version = 25;
+    }
+    if (s?.version === 25) s.version = 26;
+    if (s?.version === 26) {
+      s.unsecuredCards = [];
+      s.journeyCardDrops = [];
       s.version = VERSION;
     }
     const int = (n, min, max) => Number.isInteger(n) && n >= min && n <= max;
-    const validCards = a => Array.isArray(a) && a.length <= 300 && a.every(k => typeof k === 'string' && /^[a-zA-Z]+\+?(?:~gear)?$/.test(k) && CARDS[k.replace('~gear', '').replace('+', '')]);
-    if (!s || s.version !== VERSION || typeof s.tutorialDone !== 'boolean' || !CHARACTERS[s.character] || !int(s.warmth, 0, 12) || typeof s.traitUsed !== 'boolean' || !DIFFICULTIES[s.difficulty] || !['auto', 'manual'].includes(s.battleMode) || !['hub', 'map', 'combat', 'reward', 'camp', 'checkpoint', 'event', 'lost'].includes(s.phase)) return null;
+    const validCards = a => Array.isArray(a) && a.length <= 300 && a.every(k => typeof k === 'string' && /^[a-zA-Z]+(?:\+(?:[2-9]|10)?)?(?:~gear)?$/.test(k) && CARDS[cardBaseKey(k)]);
+    if (!s || s.version !== VERSION || typeof s.tutorialDone !== 'boolean' || !CHARACTERS[s.character] || !int(s.warmth, 0, 12) || typeof s.traitUsed !== 'boolean' || !DIFFICULTIES[s.difficulty] || !['auto', 'manual'].includes(s.battleMode) || !['hub', 'map', 'combat', 'reward', 'camp', 'memory', 'checkpoint', 'event', 'lost'].includes(s.phase)) return null;
     if (!int(s.stage, 0, ENEMIES.length - 1) || !int(s.level, 1, 100) || !int(s.xp, 0, 10000) || !int(s.nextXp, 1, 10000)) return null;
     if (!int(s.unlocked, 0, ENEMIES.length - 1) || !Array.isArray(s.clears) || s.clears.length !== ENEMIES.length || !s.clears.every(n => int(n, 0, 10000))) return null;
     if (!s.facilities || !['kitchen', 'workshop', 'rooms'].every(key => int(s.facilities[key], 0, 3))) return null;
@@ -1025,14 +1233,17 @@ export function restore(raw) {
     if (!int(s.maxHp, 70, 700) || !int(s.hp, 0, s.maxHp) || !int(s.gold, 0, 100000)) return null;
     if (!int(s.seed, 0, 4294967295) || !int(s.mapSeed, 0, 4294967295) || !int(s.turn, 1, 10000) || !int(s.energy, 0, 100) || !int(s.block, 0, 10000) || !int(s.weak, 0, 1)) return null;
     if (![s.deck, s.hand, s.draw, s.discard, s.exhaust].every(validCards) || s.deck.length < 10 || s.hand.length > 9) return null;
-    const enemyLimit = 1000;
+    const enemyLimit = 10000;
     if (!s.enemy || !int(s.enemy.hp, 0, enemyLimit) || !int(s.enemy.maxHp, 0, enemyLimit) || !int(s.enemy.block, 0, 1000) || !int(s.enemy.mark, 0, 1000)) return null;
     if (!Array.isArray(s.log) || s.log.length > 24 || !s.log.every(x => typeof x === 'string' && x.length < 300) || typeof s.relic !== 'boolean') return null;
     if (!Array.isArray(s.battleLog) || s.battleLog.length > 160 || !s.battleLog.every(x => typeof x === 'string' && x.length < 300)) return null;
-    const validAffix = affix => affix && AFFIXES.some(definition => definition.key === affix.key) && int(affix.value, 1, 20) && typeof affix.prefix === 'string';
-    const validItem = item => item && typeof item.id === 'string' && /^gear-\d+$/.test(item.id) && ITEMS[item.base] && RARITIES.some(rarity => rarity.name === item.rarity) && Array.isArray(item.affixes) && item.affixes.length <= 4 && item.affixes.every(validAffix) && (item.skill === null || REWARDS.includes(item.skill));
+    const validAffix = affix => affix && AFFIXES.some(definition => definition.key === affix.key) && int(affix.value, 1, 100) && int(affix.tier, 1, 6) && typeof affix.prefix === 'string';
+    const validItem = item => item && typeof item.id === 'string' && /^gear-\d+$/.test(item.id) && ITEMS[item.base] && int(item.itemLevel, 1, 60) && RARITIES.some(rarity => rarity.name === item.rarity) && Array.isArray(item.affixes) && item.affixes.length <= 4 && item.affixes.every(validAffix) && (item.skill === null || REWARDS.includes(item.skill)) && int(item.skillLevel, item.skill ? 1 : 0, item.skill ? 10 : 0);
     if (!Array.isArray(s.inventory) || s.inventory.length > 200 || !s.inventory.every(validItem) || new Set(s.inventory.map(item => item.id)).size !== s.inventory.length) return null;
     if (!Array.isArray(s.unsecuredLoot) || s.unsecuredLoot.length > 200 || !s.unsecuredLoot.every(id => typeof id === 'string' && itemFor(s, id)) || new Set(s.unsecuredLoot).size !== s.unsecuredLoot.length) return null;
+    if (!validCards(s.unsecuredCards) || !validCards(s.journeyCardDrops)) return null;
+    if (!Array.isArray(s.journeyNewItems) || s.journeyNewItems.length > 200 || !s.journeyNewItems.every(id => typeof id === 'string' && itemFor(s, id)) || new Set(s.journeyNewItems).size !== s.journeyNewItems.length) return null;
+    if (!Array.isArray(s.journeyNewCards) || s.journeyNewCards.length > REWARDS.length || !s.journeyNewCards.every(key => REWARDS.includes(key)) || new Set(s.journeyNewCards).size !== s.journeyNewCards.length) return null;
     if (!int(s.nextItemId, 1, 1000000)) return null;
     if (!s.equipment || !Object.keys(SLOT_LABELS).every(slot => s.equipment[slot] === null || (itemFor(s, s.equipment[slot]) && ITEMS[itemFor(s, s.equipment[slot]).base].slot === slot))) return null;
     if (s.lastLoot !== null && !itemFor(s, s.lastLoot)) return null;
