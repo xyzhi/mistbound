@@ -354,6 +354,10 @@ button:focus:not(:focus-visible) { outline: none; }
 .map-node.memory.cooldown { color: #78817d; border-color: #4b5550; border-style: dashed; background: #151b19; box-shadow: inset 0 0 0 2px rgba(120,129,125,.08); }
 .map-node.memory.cooldown.available { color: #d2d9d4; border-color: #82908a; background: #27302c; box-shadow: 0 0 0 5px rgba(130,144,138,.1), 0 0 16px rgba(130,144,138,.16); }
 .map-node.event { color: #a999bc; }
+.map-node.mystery { color: #ead47c; border-color: rgba(225, 196, 104, .62); background: #25231b; }
+.map-node.mystery.available { color: #fff3ae; border-color: #e2c867; background: #393521; }
+.map-node.mystery.cooldown { color: #929b96; border-color: #59635e; border-style: dashed; background: #171d1b; }
+.map-node.mystery.cooldown.available { color: #d6ddd8; border-color: #82908a; background: #27302c; }
 .map-node.checkpoint { width: 38px; height: 38px; color: var(--gold); border-color: rgba(209, 173, 100, .72); background: #29271e; }
 .map-node.visited { color: #54605a; border-color: #34403a; background: #111715; }
 .map-node.available { color: #eaf2e4; border-color: var(--moss-bright); background: #314638; box-shadow: 0 0 0 5px rgba(169, 200, 145, .12), 0 0 22px rgba(169, 200, 145, .22); cursor: pointer; animation: node-pulse 1.9s ease-in-out infinite; }
@@ -426,7 +430,7 @@ button:focus:not(:focus-visible) { outline: none; }
 .skip-reward-confirm { width: min(380px, 100%); padding: 22px 22px 20px; }
 .skip-reward-confirm .confirm-icon { width: 44px; height: 44px; margin-bottom: 9px; }
 .skip-reward-confirm .confirm-icon svg { width: 22px; height: 22px; }
-.skip-reward-confirm h2 { max-width: 280px; margin: 6px auto 9px; font-size: 25px; line-height: 1.18; }
+.skip-reward-confirm h2 { max-width: 280px; margin: 6px auto 9px; font-size: 20px; line-height: 1.25; }
 .skip-reward-confirm p { max-width: 320px; margin-inline: auto; font-size: 11px; line-height: 1.6; }
 .skip-reward-confirm .confirm-actions { margin-top: 17px; }
 .skip-reward-confirm .confirm-actions button { min-height: 44px; font-size: 13px; }
@@ -478,6 +482,32 @@ button:focus:not(:focus-visible) { outline: none; }
 .camp-grid { display: grid; gap: 10px; }
 .camp-choice { min-height: 82px; padding: 16px; display: flex; align-items: center; gap: 16px; text-align: left; color: #ebe7dc; border: 1px solid var(--line); background: #19211f; cursor: pointer; }
 .camp-choice:hover:not(:disabled) { border-color: #8fad7f; background: #202b27; }
+.mystery-overlay .overlay-art { filter: saturate(.6) brightness(.48); }
+.mystery-overlay .overlay-shade { background: linear-gradient(90deg, rgba(9,14,13,.28), rgba(10,15,14,.62) 48%, #111615 66%); }
+.mystery-machine { position: relative; width: min(440px, 100%); padding: 18px; overflow: hidden; border: 2px solid #b99a4d; background: #171c1a; box-shadow: inset 0 0 0 4px #25271e, 0 16px 40px rgba(0,0,0,.45); }
+.mystery-lights { position: absolute; inset: 5px; display: flex; justify-content: space-between; pointer-events: none; }
+.mystery-lights i { width: 7px; height: 7px; border-radius: 50%; background: #735f31; box-shadow: 0 0 7px rgba(229,199,104,.18); }
+.mystery-machine.is-rolling .mystery-lights i { animation: mystery-light .42s steps(2, end) infinite; }
+.mystery-lights i:nth-child(even) { animation-delay: .21s !important; }
+.mystery-window { min-height: 146px; padding: 25px 20px 18px; display: grid; place-items: center; align-content: center; gap: 6px; color: #f3e6b1; border: 1px solid #70623d; background: radial-gradient(circle at center, #303426 0, #18201c 58%, #101513 100%); text-align: center; }
+.mystery-window svg { width: 42px; height: 42px; color: #e1c663; filter: drop-shadow(0 0 8px rgba(225,198,99,.35)); }
+.mystery-window small { color: #aaa991; font-size: 9px; font-weight: 800; }
+.mystery-window strong { font-family: Georgia, "Songti SC", serif; font-size: 27px; }
+.mystery-machine.is-rolling .mystery-window strong { animation: mystery-reel .18s linear infinite; }
+.mystery-track { margin-top: 10px; display: flex; gap: 6px; opacity: .55; overflow: hidden; }
+.mystery-track span { flex: 0 0 auto; padding: 5px 8px; color: #bdb89e; border: 1px solid #494b3b; font-size: 8px; }
+.mystery-enter { width: min(440px, 100%); min-height: 48px; margin-top: 12px; }
+.mystery-enter:disabled { color: #898d84; background: #29302d; box-shadow: none; cursor: wait; }
+.forget-overlay .overlay-sheet { align-self: stretch; min-height: 0; display: flex; flex-direction: column; }
+.forget-grid { flex: 1 1 auto; width: min(610px, 100%); min-height: 0; max-height: min(48vh, 430px); padding: 8px 5px 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); align-content: start; gap: 10px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.forget-grid .game-card.compact { width: 100%; height: 174px; min-width: 0; }
+.forget-overlay .memory-leave { flex: 0 0 auto; }
+.negative-event { width: min(440px, 100%); min-height: 120px; padding: 22px; display: grid; grid-template-columns: 46px 1fr; align-items: center; gap: 5px 14px; color: #ebdfd8; border: 1px solid rgba(218,135,125,.48); background: rgba(58,30,28,.5); }
+.negative-event svg { grid-row: 1 / 3; width: 36px; height: 36px; color: #e4978e; }
+.negative-event strong { font-size: 18px; }
+.negative-event span { color: #bfb4ae; font-size: 10px; }
+@keyframes mystery-light { 50% { background: #f1d374; box-shadow: 0 0 11px rgba(241,211,116,.8); } }
+@keyframes mystery-reel { 50% { opacity: .5; transform: translateY(2px); filter: blur(1px); } }
 .camp-choice:disabled { opacity: .38; cursor: not-allowed; }
 .camp-choice span { display: grid; gap: 4px; }
 .camp-choice small { color: var(--muted); }
@@ -900,6 +930,9 @@ button:focus:not(:focus-visible) { outline: none; }
   .overlay-shade { background: linear-gradient(0deg, #111615 55%, rgba(17, 22, 21, .05)); }
   .overlay-sheet { position: relative; height: 100%; min-height: 0; padding: 26vh 18px max(12px, var(--safe-bottom)); overflow: hidden; }
   .overlay-sheet h2 { font-size: 42px; }
+  .forget-overlay .overlay-sheet { padding-top: 23vh; }
+  .forget-overlay .overlay-sheet > p { flex: 0 0 auto; margin-bottom: 12px; }
+  .forget-overlay .forget-grid { max-height: none; }
   .memory-grid { max-height: calc(100% - 184px); grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
   .memory-choice { padding: 5px 3px 7px; }
   .memory-choice .game-card.compact { width: 100%; height: min(145px, 21vh); padding: 6px; }
@@ -931,7 +964,7 @@ button:focus:not(:focus-visible) { outline: none; }
   .skip-reward-button { min-height: 42px; margin-top: 3px; padding: 0 16px; font-size: 11px; }
   .skip-reward-confirm { width: min(350px, 92vw); padding: 18px 16px 16px; }
   .skip-reward-confirm .confirm-icon { width: 40px; height: 40px; margin-bottom: 7px; }
-  .skip-reward-confirm h2 { max-width: 240px; margin: 5px auto 8px; font-size: 22px; line-height: 1.2; }
+  .skip-reward-confirm h2 { max-width: 240px; margin: 5px auto 8px; font-size: 18px; line-height: 1.25; }
   .skip-reward-confirm p { max-width: 290px; font-size: 10px; line-height: 1.55; }
   .skip-reward-confirm .confirm-actions { margin-top: 14px; gap: 8px; }
   .skip-reward-confirm .confirm-actions button { min-height: 42px; padding: 0 8px; font-size: 12px; }

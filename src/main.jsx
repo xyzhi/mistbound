@@ -7,9 +7,9 @@ import {
   Sparkles, Swords, Target, TentTree, TrendingUp, Volume2, VolumeX, Wind, Wrench, X,
 } from 'lucide-react';
 import {
-  AFFIX_LABELS, CHARACTERS, CHECKPOINTS, CHECKPOINT_STEPS, CHAPTER_LOOT, CHAPTERS, DIFFICULTIES, ENEMIES, EQUIPMENT_ART, GUESTS, ITEMS, SAVE_KEY, SEGMENT_NAMES, SLOT_LABELS, attackBreakdown, card,
-  cardBaseKey, cardRank, chapterMap, chooseAutoCard, commissionStatus, description, enemyFor, equipmentStats, facilityCost, intent, itemFor, itemLines, MAP_STEPS,
-  itemName, itemScore, itemStats, itemTier, itemUpgradeCost, memoryCooldownRemaining, newRun, rankedCardKey, rerollCost, restore, salvageValue, serialize, skillRewardRank, transition, upgradeCardKey,
+  AFFIX_LABELS, CHARACTERS, CHECKPOINTS, CHECKPOINT_STEPS, CHAPTER_LOOT, CHAPTERS, DIFFICULTIES, ENEMIES, EQUIPMENT_ART, GUESTS, ITEMS, MYSTERY_STATIONS, SAVE_KEY, SEGMENT_NAMES, SLOT_LABELS, attackBreakdown, card,
+  cardBaseKey, cardRank, chapterMap, chooseAutoCard, commissionStatus, compareCardKeys, description, enemyFor, equipmentStats, facilityCost, intent, itemFor, itemLines, MAP_STEPS,
+  itemName, itemScore, itemStats, itemTier, itemUpgradeCost, magicHouseCooldownRemaining, newRun, rankedCardKey, rerollCost, restore, salvageValue, serialize, skillRewardRank, transition, upgradeCardKey,
 } from './game.mjs';
 import './styles.css';
 import camperPixel from './assets/pixel/runtime/camper.webp';
@@ -144,7 +144,7 @@ function MusicProvider({ children }) {
     if (!context) return;
     const now = context.currentTime;
     const musicGain = musicGainRef.current?.gain;
-    if (musicGain) {
+    if (musicGain && kind !== 'mysteryTick') {
       musicGain.cancelScheduledValues(now);
       musicGain.setValueAtTime(musicGain.value, now);
       musicGain.linearRampToValueAtTime(.12, now + .025);
@@ -175,6 +175,9 @@ function MusicProvider({ children }) {
       heal: () => { voice(440, 0, .18, .07); voice(554, .07, .2, .075); voice(659, .14, .24, .07); },
       victory: () => [523, 659, 784, 1047].forEach((note, index) => voice(note, index * .085, .28, .085, 'triangle')),
       defeat: () => [220, 185, 147].forEach((note, index) => voice(note, index * .13, .3, .1, 'triangle', note * .82)),
+      mysteryTick: () => { voice(280, 0, .045, .045, 'square', 220); voice(720, 0, .035, .022, 'triangle', 620); },
+      mysteryReveal: () => { [392, 523, 659].forEach((note, index) => voice(note, index * .075, .24, .09, 'triangle', note * 1.08)); voice(1047, .24, .32, .075, 'sine', 1319); },
+      mysteryBad: () => { voice(196, 0, .34, .12, 'sawtooth', 98); voice(147, .12, .3, .09, 'triangle', 73); },
     };
     (sounds[kind] || sounds.tap)();
   };
@@ -288,7 +291,7 @@ function CardView({ cardKey, onClick, onPointerDown, onPointerMove, onPointerUp,
     <button className={`game-card ${c.type} ${c.equipmentGranted ? 'equipment-granted' : ''} ${compact ? 'compact' : ''} ${active ? 'auto-active' : ''} ${selected ? 'selected' : ''} ${detached ? 'detached' : ''} ${playReady ? 'play-ready' : ''} ${ghost ? 'throw-ghost' : ''} ${interactive ? '' : 'read-only'}`} style={style} data-hand-index={handIndex} tabIndex={ghost ? -1 : undefined} aria-hidden={ghost || undefined} onClick={onClick} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel} disabled={disabled}>
       <span className="card-cost">{c.cost}</span>
       {isNew && <span className="new-badge">NEW</span>}
-      <span className="card-school">{c.equipmentGranted ? '装备技' : c.school}{c.rank > 1 ? ` · Lv.${c.rank}` : ''}</span>
+      <span className="card-school">{c.equipmentGranted ? '装备技' : c.school}</span>
       <span className="card-art pixel-art" style={cardAtlasStyle(cardKey)}><i className="card-category"><Icon size={compact ? 12 : 14} strokeWidth={1.8} /></i></span>
       <strong>{c.name}</strong>
       <span className="card-rule">{description(cardKey).join('。')}。</span>
@@ -676,7 +679,7 @@ function Reward({ state, dispatch }) {
       const offset = index - (state.choices.length - 1) / 2;
       const previewRank = skillRewardRank(state, key);
       return <CardView key={key} cardKey={rankedCardKey(key, previewRank)} compact active={picked === key} style={{ '--fan-offset': offset, '--fan-y': Math.abs(offset) * 5, '--fan-z': 10 - Math.abs(offset) }} onClick={() => chooseReward(key)} disabled={Boolean(picked)} />;
-    })}</div><button className="text-button skip-reward-button" disabled={Boolean(picked)} onClick={() => setConfirmingSkip(true)}>跳过奖励</button></section>
+    })}</div><button className="text-button skip-reward-button" disabled={Boolean(picked)} onClick={() => setConfirmingSkip(true)}>本次不选卡牌</button></section>
     {reviewing && <BattleReview entries={state.battleLog} enemyName={enemyFor(state).name} onClose={() => setReviewing(false)} />}
     {confirmingSkip && <SkipRewardConfirm onCancel={() => setConfirmingSkip(false)} onConfirm={() => dispatch({ type: 'reward', key: null })} />}
   </Overlay>;
@@ -685,9 +688,7 @@ function Reward({ state, dispatch }) {
 const NODE_META = {
   battle: { label: '普通战斗', icon: Moon, tip: '普通战斗：难度较低，胜利后获得经验、卡牌和随机装备。' },
   elite: { label: '精英战斗', icon: Crown, tip: '精英战斗：敌人更强，但装备品质和旅币奖励更高。' },
-  camp: { label: '休息', icon: TentTree, tip: '休息站：回复生命，或购买贯穿本次旅途的靠枕。' },
-  memory: { label: '整理回忆', icon: Combine, tip: '整理回忆：两张同名同等级技能，可以合成为一张高一级技能。' },
-  event: { label: '事件', icon: CircleHelp, tip: '沿途事件：在两个选项中取舍，可能消耗生命或获得旅币。' },
+  mystery: { label: '未知际遇', icon: CircleHelp, tip: '未知际遇：踏入后才会随机揭晓休息、整理、遗忘、沿途事件或低概率负面事件。' },
   checkpoint: { label: '路标', icon: MapPin, tip: '路标：每 10 步出现，可恢复生命、精简卡组或补充旅途资源。' },
   boss: { label: '首领', icon: Flame, tip: '区域首领：击败后完成本章并解锁下一站。' },
 };
@@ -717,7 +718,6 @@ function MapView({ state, dispatch }) {
   const previous = nodes.find(node => node.id === state.currentNode);
   const available = new Set(state.mapRow < 0 ? nodes.filter(node => node.row === 0).map(node => node.id) : (previous?.links || []));
   const byId = Object.fromEntries(nodes.map(node => [node.id, node]));
-  const currentMemoryRemaining = previous?.type === 'memory' ? memoryCooldownRemaining(state, previous.id) : 0;
   const scrollRef = useRef(null);
   const rowHeight = 68;
   const mapHeight = MAP_STEPS * rowHeight + 80;
@@ -740,7 +740,6 @@ function MapView({ state, dispatch }) {
     <div className="map-art pixel-art" style={{ backgroundImage: `url(${PIXEL_BACKGROUNDS[state.stage]})` }} /><div className="map-shade" />
     <header className="map-heading"><span className="eyebrow">第 {state.stage + 1} 站 · 第 {segment + 1} 段</span><h1>{chapter.name}</h1><p>{SEGMENT_NAMES[segment]} · 选择发光的下一节点，穿过 50 段夜路。</p></header>
     <div className="map-stats"><Tip text="提升等级会增加生命上限；经验来自战斗。"><span><TrendingUp />Lv.{state.level}</span></Tip><Tip text="当前生命。降到 0 时本局直接结束。"><span><Heart />{state.hp}/{state.maxHp}</span></Tip><Tip text="旅币可用于工坊、设施升级与旅途交易。"><span><Coins />{state.gold}</span></Tip><div className="map-actions"><button onClick={() => setConfirmReturn(true)}>返回房车</button><button onClick={() => setShowJourneyCards(true)}>本次收获 {journeyRewardCount}</button></div></div>
-    {currentMemoryRemaining > 0 && <div className="memory-cooldown-notice" role="status"><Hourglass />回忆整理中，再走 {currentMemoryRemaining} 步后恢复</div>}
     <div className="map-scroll" ref={scrollRef}>
     <div className="route-map" style={{ height: `${mapHeight}px` }}>
       <svg viewBox={`0 0 100 ${mapHeight}`} preserveAspectRatio="none" aria-hidden="true">
@@ -753,13 +752,13 @@ function MapView({ state, dispatch }) {
       {CHECKPOINT_STEPS.map(step => <div key={step} className="map-milepost" style={{ top: `${y(step - 1)}px` }}><span>{step} · {CHECKPOINTS[step].title}</span></div>)}
       {nodes.map(node => {
         const meta = NODE_META[node.type];
-        const memoryRemaining = node.type === 'memory' ? memoryCooldownRemaining(state, node.id) : 0;
-        const coolingDown = memoryRemaining > 0;
-        const Icon = coolingDown ? Hourglass : meta.icon;
         const visited = state.visited.includes(node.id), enabled = available.has(node.id), current = state.currentNode === node.id;
+        const nodeCooldown = node.type === 'mystery' ? magicHouseCooldownRemaining(state, node.id) : 0;
+        const coolingDown = nodeCooldown > 0;
+        const Icon = coolingDown ? Hourglass : meta.icon;
         return <button key={node.id} className={`map-node ${node.type} ${coolingDown ? 'cooldown' : ''} ${visited ? 'visited' : ''} ${enabled ? 'available' : ''} ${current ? 'current' : ''}`}
-          style={{ left: `${node.x}%`, top: `${y(node.row)}px` }} aria-disabled={!enabled} onClick={event => enabled ? dispatch({ type: 'node', id: node.id }) : show(visited ? '这个节点已经走过。' : coolingDown ? `回忆整理中，再走 ${memoryRemaining} 步后恢复。` : '需要沿当前节点亮起的连线继续前进。', event)} aria-label={`${meta.label} · 第 ${node.row + 1} 步${coolingDown ? ` · 还需 ${memoryRemaining} 步恢复` : ''}`}>
-          {current ? <i className="map-character-avatar pixel-art" style={characterStyle(state.character, 2.3)} /> : <Icon />}<span>{coolingDown ? `${memoryRemaining} 步恢复` : enabled ? '可前往' : meta.label}</span>
+          style={{ left: `${node.x}%`, top: `${y(node.row)}px` }} aria-disabled={!enabled} onClick={event => enabled ? dispatch({ type: 'node', id: node.id }) : coolingDown ? show(`魔法屋重新洗牌中，还需前进 ${nodeCooldown} 步。`, event) : show(visited ? '这个节点已经走过。' : '需要沿当前节点亮起的连线继续前进。', event)} aria-label={`${meta.label} · 第 ${node.row + 1} 步${coolingDown ? ` · 冷却剩余 ${nodeCooldown} 步` : ''}`}>
+          {current ? <i className="map-character-avatar pixel-art" style={characterStyle(state.character, 2.3)} /> : <Icon />}<span>{coolingDown ? `${nodeCooldown} 步` : enabled ? '可前往' : meta.label}</span>
         </button>;
       })}
     </div></div>
@@ -767,6 +766,35 @@ function MapView({ state, dispatch }) {
     {confirmReturn && <ReturnHubConfirm safe={atCheckpoint} atStart={state.mapRow < 0} unsecuredItemCount={unsecuredItemCount} unsecuredCardCount={unsecuredCardCount} onCancel={() => setConfirmReturn(false)} onConfirm={() => { setConfirmReturn(false); dispatch({ type: 'returnHub' }); }} />}
     {showJourneyCards && <JourneyRewardsModal state={state} onClose={() => setShowJourneyCards(false)} />}
   </section>;
+}
+
+function MysteryStation({ state, dispatch }) {
+  const { playSfx } = React.useContext(MusicContext);
+  const [rolling, setRolling] = useState(true);
+  const [reelIndex, setReelIndex] = useState(0);
+  const result = MYSTERY_STATIONS.find(station => station.type === state.mysteryResult) || MYSTERY_STATIONS[0];
+  useEffect(() => {
+    playSfx('mysteryTick');
+    const interval = window.setInterval(() => {
+      setReelIndex(index => (index + 1) % MYSTERY_STATIONS.length);
+      playSfx('mysteryTick');
+    }, 120);
+    const timer = window.setTimeout(() => {
+      window.clearInterval(interval);
+      setRolling(false);
+      playSfx(state.mysteryResult === 'negative' ? 'mysteryBad' : 'mysteryReveal');
+    }, 1080);
+    return () => { window.clearInterval(interval); window.clearTimeout(timer); };
+  }, []);
+  const shown = rolling ? MYSTERY_STATIONS[reelIndex] : result;
+  return <Overlay background={PIXEL_BACKGROUNDS[state.stage]} eyebrow="未知际遇" title="命运魔法屋" text="路上的故事正在重新洗牌，停下时才知道今晚会遇见什么。" variant="mystery-overlay">
+    <div className={`mystery-machine ${rolling ? 'is-rolling' : 'is-revealed'}`}>
+      <div className="mystery-lights" aria-hidden="true">{Array.from({ length: 10 }, (_, index) => <i key={index} />)}</div>
+      <div className="mystery-window"><CircleHelp /><small>{rolling ? '沿途事件抽取中' : '本次际遇'}</small><strong>{shown.label}</strong></div>
+      <div className="mystery-track" aria-hidden="true">{MYSTERY_STATIONS.map(station => <span key={station.type}>{station.label}</span>)}</div>
+    </div>
+    <button className="primary mystery-enter" disabled={rolling} onClick={() => dispatch({ type: 'mystery' })}>{rolling ? '正在揭晓...' : `进入${result.label}`}</button>
+  </Overlay>;
 }
 
 function EventView({ state, dispatch }) {
@@ -820,6 +848,23 @@ function MemoryStation({ state, dispatch }) {
       <strong>{card(merging).name}合成成功</strong>
       <span>Lv.{cardRank(merging)} → Lv.{cardRank(merging) + 1}</span>
     </div>}
+  </Overlay>;
+}
+
+function ForgetStation({ state, dispatch }) {
+  const cards = useMemo(() => state.deck.map((key, index) => ({ key, index })).sort((a, b) => compareCardKeys(a.key, b.key)), [state.deck]);
+  const canForget = state.deck.length > 10;
+  return <Overlay background={PIXEL_BACKGROUNDS[state.stage]} eyebrow="卡组精简站" title="遗忘回忆" text="选一张不再需要的技能留在这里。遗忘后无法撤销。" variant="forget-overlay">
+    {canForget ? <div className="forget-grid">{cards.map(entry => <CardView key={`${entry.key}-${entry.index}`} cardKey={entry.key} compact onClick={() => dispatch({ type: 'forget', index: entry.index })} />)}</div> : <div className="memory-empty"><BookOpen /><strong>基础卡组不能继续精简</strong><p>卡组多于 10 张时，才能在这里遗忘一张牌。</p></div>}
+    <button className="memory-leave secondary" onClick={() => dispatch({ type: 'forget', index: null })}>不遗忘，继续赶路</button>
+  </Overlay>;
+}
+
+function NegativeStation({ state, dispatch }) {
+  const costsGold = state.gold >= 12;
+  return <Overlay background={PIXEL_BACKGROUNDS[state.stage]} eyebrow="低概率负面际遇" title="失序路段" text={costsGold ? '迷雾拦住去路，需要留下 12 枚旅币才能继续。' : '旅币不足，失序夜风会带走少量生命，但不会令生命降到 0。'}>
+    <div className="negative-event"><AlertTriangle /><strong>{costsGold ? '失去 12 枚旅币' : `失去最多 ${Math.max(1, Math.ceil(state.maxHp * .08))} 点生命`}</strong><span>未知路标并不总会带来好运。</span></div>
+    <button className="confirm-danger mystery-enter" onClick={() => dispatch({ type: 'negative', choice: 'continue' })}>承担代价并继续</button>
   </Overlay>;
 }
 
@@ -1039,6 +1084,7 @@ function Drawer({ state, dispatch, onClose, onRestart, initialTab = 'character' 
   const [seenTutorials, setSeenTutorials] = useState(readDrawerTutorials);
   const [tutorialTab, setTutorialTab] = useState(() => readDrawerTutorials()[initialTab] ? null : initialTab);
   const stats = equipmentStats(state);
+  const sortedDeck = useMemo(() => [...state.deck].sort(compareCardKeys), [state.deck]);
   const openTab = (next, event) => {
     if (state.phase !== 'hub' && ['workshop', 'guests'].includes(next)) {
       show(next === 'workshop' ? '房车工坊只能在返回房车后使用。' : '客人奖励只能在返回房车后查看和领取。', event);
@@ -1059,7 +1105,7 @@ function Drawer({ state, dispatch, onClose, onRestart, initialTab = 'character' 
     <nav className="drawer-tabs"><button className={tab === 'character' ? 'active' : ''} onClick={event => openTab('character', event)}>装备</button><button className={tab === 'bag' ? 'active' : ''} onClick={event => openTab('bag', event)}>背包 {state.inventory.length}</button><button className={tab === 'deck' ? 'active' : ''} onClick={event => openTab('deck', event)}>卡组 {state.deck.length}</button><button className={`${tab === 'workshop' ? 'active' : ''} ${state.phase !== 'hub' ? 'travel-locked' : ''}`} onClick={event => openTab('workshop', event)}>工坊</button><button className={`${tab === 'guests' ? 'active' : ''} ${state.phase !== 'hub' ? 'travel-locked' : ''}`} onClick={event => openTab('guests', event)}>客人</button></nav>
     {tab === 'character' && <><div className="equipment-toolbar"><strong>当前装备</strong><button disabled={state.phase !== 'hub'} onClick={() => dispatch({ type: 'equipBest' })}><Crown />一键装备最强</button></div><div className="equipment-grid">{Object.entries(SLOT_LABELS).map(([slot, label]) => { const item = itemFor(state, state.equipment[slot]); return <EquippedSlot key={slot} item={item} slot={slot} label={label} active={selectedSlot === slot} onOpen={() => setSelectedSlot(selectedSlot === slot ? null : slot)} />; })}</div>{selectedSlot && <section className="slot-replacements"><header><span><small>替换装备</small><strong>{SLOT_LABELS[selectedSlot]}</strong></span><button className="icon-button" onClick={() => setSelectedSlot(null)} aria-label="收起替换列表"><X /></button></header><p>点击装备查看详情，对比后确认替换。</p><div className="inventory-list">{state.inventory.filter(item => ITEMS[item.base].slot === selectedSlot).map(item => <GearRow key={item.id} item={item} equipped={state.equipment[selectedSlot] === item.id} isNew={state.journeyNewItems?.includes(item.id)} onOpen={() => setSelectedGear(item.id)} />)}</div>{state.phase !== 'hub' && <small className="bag-hint">只有回到房车才能更换装备。</small>}</section>}<div className="log"><h3><BookOpen />最近战报</h3>{state.log.slice(0, 6).map((item, i) => <p key={i}>{item}</p>)}</div></>}
     {tab === 'bag' && <div className="inventory-list">{state.inventory.map(item => { const slot = ITEMS[item.base].slot; return <GearRow key={item.id} item={item} equipped={state.equipment[slot] === item.id} isNew={state.journeyNewItems?.includes(item.id)} onOpen={() => setSelectedGear(item.id)} />; })}{state.phase !== 'hub' && <p className="bag-hint">旅途中只能查看装备，返回房车后才能更换。</p>}</div>}
-    {tab === 'deck' && <div className="deck-list">{state.deck.map((key, i) => <CardView key={`${key}-${i}`} cardKey={key} compact isNew={state.journeyNewCards?.includes(cardBaseKey(key))} onClick={() => dispatch({ type: 'viewCard', key })} />)}</div>}
+    {tab === 'deck' && <div className="deck-list">{sortedDeck.map((key, i) => <CardView key={`${key}-${i}`} cardKey={key} compact isNew={state.journeyNewCards?.includes(cardBaseKey(key))} onClick={() => dispatch({ type: 'viewCard', key })} />)}</div>}
     {tab === 'workshop' && <div className="workshop"><header><Wrench /><span><strong>房车工坊</strong><small>重抽属性会刷新随机词条；拆解会永久销毁装备。附带技能不会被重抽。</small></span><b><Coins />{state.gold}</b></header><FacilityUpgrades state={state} dispatch={dispatch} /><div className="workshop-items">{state.inventory.map(item => <WorkshopRow key={item.id} state={state} item={item} dispatch={dispatch} onOpen={() => setSelectedGear(item.id)} />)}</div></div>}
     {tab === 'guests' && <><CommissionBoard state={state} dispatch={dispatch} /><GuestRooms state={state} dispatch={dispatch} /></>}
     <button className="danger" onClick={onRestart}>放弃并重新开始</button>
@@ -1085,9 +1131,9 @@ function ReturnHubConfirm({ safe, atStart, unsecuredItemCount, unsecuredCardCoun
   const unsecuredCount = unsecuredItemCount + unsecuredCardCount;
   const risky = !safe && unsecuredCount > 0;
   const rewardSummary = [unsecuredItemCount ? `${unsecuredItemCount} 件装备` : '', unsecuredCardCount ? `${unsecuredCardCount} 张卡牌` : ''].filter(Boolean).join('和');
-  const message = safe
+  const message = (safe
     ? atStart ? '尚未离开起点，可以安全返回。重新启程时仍从当前起点或已激活路标继续。' : '本段获得的装备和卡牌已在夜程路标完成存放，可以安全返回。'
-    : risky ? `当前不在路标，返回将结束本次路线，并从本段尚未存放的${rewardSummary}中随机遗失 1 项。` : '当前不在路标，返回将结束本次路线。你没有尚未存放的装备或卡牌，因此不会遗失奖励。';
+    : risky ? `当前不在路标，返回将结束本次路线，并从本段尚未存放的${rewardSummary}中随机遗失 1 项。` : '当前不在路标，返回将结束本次路线。你没有尚未存放的装备或卡牌，因此不会遗失奖励。') + ' 返回房车后会恢复全部生命。';
   return <div className="confirm-backdrop" onClick={onCancel}>
     <section className={`confirm-dialog return-confirm ${risky ? 'risky' : ''}`} role="alertdialog" aria-modal="true" aria-labelledby="return-confirm-title" onClick={event => event.stopPropagation()}>
       <span className="confirm-icon"><PackageOpen /></span>
@@ -1103,10 +1149,10 @@ function SkipRewardConfirm({ onCancel, onConfirm }) {
   return <div className="confirm-backdrop" onClick={onCancel}>
     <section className="confirm-dialog skip-reward-confirm" role="alertdialog" aria-modal="true" aria-labelledby="skip-reward-confirm-title" onClick={event => event.stopPropagation()}>
       <span className="confirm-icon"><AlertTriangle /></span>
-      <small>放弃选牌</small>
-      <h2 id="skip-reward-confirm-title">确定跳过奖励？</h2>
-      <p>跳过后本次不会获得新卡牌，且无法返回当前奖励界面重新选择。</p>
-      <div className="confirm-actions"><button className="secondary" onClick={onCancel}>返回选牌</button><button className="confirm-danger" onClick={onConfirm}>确认跳过</button></div>
+      <small>放弃本次选牌</small>
+      <h2 id="skip-reward-confirm-title">本次不选择卡牌？</h2>
+      <p>本场获得的装备已经放入背包，不受影响。继续后只会放弃这次技能牌选择，且无法返回重新选择。</p>
+      <div className="confirm-actions"><button className="secondary" onClick={onCancel}>返回选牌</button><button className="confirm-danger" onClick={onConfirm}>确认不选</button></div>
     </section>
   </div>;
 }
@@ -1190,6 +1236,16 @@ function App() {
         changes.push({ text: `${lost ? '遗失' : '移除'}卡牌：${card(key).name} Lv.${cardRank(key)}`, tone: 'loss', key: `removed-card-${Date.now()}-${index}` });
       });
     }
+    if (previous.phase === 'map' && state.phase === 'hub') {
+      const currentItems = new Set(state.inventory.map(item => item.id));
+      previous.inventory
+        .filter(item => !currentItems.has(item.id) && (previous.unsecuredLoot || []).includes(item.id))
+        .forEach((item, index) => changes.push({
+          text: `遗失装备：${itemName(item)}`,
+          tone: 'loss',
+          key: `lost-item-${Date.now()}-${index}`,
+        }));
+    }
     const add = (label, value) => { if (value) changes.push({ label, value, key: `${label}-${Date.now()}-${value}` }); };
     if (state.phase === previous.phase && state.phase !== 'combat') add('生命', state.hp - previous.hp);
     add('旅币', state.gold - previous.gold);
@@ -1212,7 +1268,7 @@ function App() {
     return () => window.clearTimeout(timer);
   }, [state?.phase, state?.played, battleSpeed]);
   const enemy = useMemo(() => state ? enemyFor(state) : null, [state]);
-  const location = state?.phase === 'map' ? CHAPTERS[state.stage].name : state?.phase === 'camp' ? '亮灯的休息站' : state?.phase === 'memory' ? '整理回忆站' : state?.phase === 'checkpoint' ? CHECKPOINTS[state.mapRow + 1]?.title || '夜程路标' : state?.phase === 'event' ? '夜路岔口' : enemy?.place;
+  const location = state?.phase === 'map' ? CHAPTERS[state.stage].name : state?.phase === 'mystery' ? '命运魔法屋' : state?.phase === 'camp' ? '亮灯的休息站' : state?.phase === 'memory' ? '整理回忆站' : state?.phase === 'forget' ? '遗忘回忆站' : state?.phase === 'negative' ? '失序路段' : state?.phase === 'checkpoint' ? CHECKPOINTS[state.mapRow + 1]?.title || '夜程路标' : state?.phase === 'event' ? '夜路岔口' : enemy?.place;
   const clearValueFloaters = () => { window.clearTimeout(valueFloaterTimer.current); setValueFloaters([]); };
   const startNew = (mode = 'manual', difficulty = 'standard', character = 'gaigai') => { const next = newRun(Date.now() >>> 0, mode, difficulty, character); clearValueFloaters(); localStorage.setItem(SAVE_KEY, serialize(next)); setSaved(next); setDrawer(false); setState(next); };
   const resetRun = () => { clearValueFloaters(); localStorage.removeItem(SAVE_KEY); setSaved(null); setDrawer(false); setConfirmingRestart(false); setState(null); };
@@ -1223,10 +1279,13 @@ function App() {
   return <main className="game-shell">
     <header className="topbar"><div><Tip text={`当前为${DIFFICULTIES[state.difficulty].name}难度，${state.battleMode === 'auto' ? '系统会自动选择卡牌' : '由你手动选择卡牌'}；这两项设置会贯穿整局。`}><span>Lv.{state.level} · 第 {state.stage + 1} / {ENEMIES.length} 站 · {DIFFICULTIES[state.difficulty].name} · {state.battleMode === 'auto' ? '自动' : '手动'}</span></Tip><strong>{location}</strong></div><div className="route">{ENEMIES.map((_, i) => <i key={i} className={i <= state.stage ? 'active' : ''} />)}</div>{state.phase === 'map' ? <span className="topbar-spacer" /> : <button className="icon-button" onClick={() => setDrawer(true)} aria-label="打开角色与背包"><Menu /></button>}</header>
     {state.phase === 'map' && <MapView state={state} dispatch={dispatch} />}
+    {state.phase === 'mystery' && <MysteryStation state={state} dispatch={dispatch} />}
     {(state.phase === 'combat' || settling) && <Battle state={state} dispatch={dispatch} battleSpeed={battleSpeed} onBattleSpeed={setBattleSpeed} outcome={settling === 'reward' ? 'victory' : settling === 'lost' ? 'defeat' : null} />}
     {state.phase === 'reward' && !settling && <Reward state={state} dispatch={dispatch} />}
     {state.phase === 'camp' && <Camp state={state} dispatch={dispatch} />}
     {state.phase === 'memory' && <MemoryStation state={state} dispatch={dispatch} />}
+    {state.phase === 'forget' && <ForgetStation state={state} dispatch={dispatch} />}
+    {state.phase === 'negative' && <NegativeStation state={state} dispatch={dispatch} />}
     {state.phase === 'checkpoint' && <Checkpoint state={state} dispatch={dispatch} />}
     {state.phase === 'event' && <EventView state={state} dispatch={dispatch} />}
     {drawer && state.phase !== 'map' && <Drawer initialTab={drawer === true ? 'character' : drawer} state={state} dispatch={dispatch} onClose={() => setDrawer(false)} onRestart={() => setConfirmingRestart(true)} />}

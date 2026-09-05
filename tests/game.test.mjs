@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { CARDS, CHARACTERS, CHAPTER_LOOT, CHECKPOINTS, CORE_REWARDS, DIFFICULTIES, ENCOUNTERS, ENEMIES, EQUIPMENT_ART, ITEMS, MAP_STEPS, attackPreview, buildChapterMap, card, chooseAutoCard, commissionStatus, enemyFor, equipmentStats, facilityCost, itemBaseStats, itemFor, itemStats, itemTier, itemUpgradeCost, memoryCooldownRemaining, newRun, rerollCost, restore, serialize, skillRewardRank, transition } from '../src/game.mjs';
+import { CARDS, CHARACTERS, CHAPTER_LOOT, CHECKPOINTS, CORE_REWARDS, DIFFICULTIES, ENCOUNTERS, ENEMIES, EQUIPMENT_ART, ITEMS, MAP_STEPS, MYSTERY_STATIONS, attackPreview, buildChapterMap, card, chooseAutoCard, commissionStatus, compareCardKeys, enemyFor, equipmentStats, facilityCost, itemBaseStats, itemFor, itemStats, itemTier, itemUpgradeCost, magicHouseCooldownRemaining, newRun, rerollCost, restore, serialize, skillRewardRank, transition } from '../src/game.mjs';
 
 const leaveHub = (state, stage = 0) => transition(state, { type: 'depart', stage });
 const enterBattle = (seed, mode = 'manual') => transition(leaveHub(newRun(seed, mode)), { type: 'node', id: 'c0r0n0' });
@@ -115,15 +115,25 @@ test('弱点伤害由当前层数决定而不随攻击力变化', () => {
   assert.equal(attackPreview(high, 'slash'), 5);
 });
 
-test('该该把溢出治疗转为暖意并追加到下一次攻击', () => {
+test('该该把一半实际治疗和全部溢出治疗转为暖意并追加到下一次攻击', () => {
   const state = transition(leaveHub(newRun(82, 'manual', 'standard', 'gaigai')), { type: 'node', id: 'c0r0n0' });
   state.hp = state.maxHp - 1; state.hand = ['mend', 'slash']; state.energy = 3; state.enemy.hp = 100; state.enemy.maxHp = 100;
   const healed = transition(state, { type: 'play', index: 0 });
-  assert.equal(healed.warmth, Math.round(card('mend').heal * DIFFICULTIES.standard.healing) - 1);
+  const effectiveHealing = Math.round(card('mend').heal * DIFFICULTIES.standard.healing);
+  assert.equal(healed.warmth, Math.ceil(1 / 2) + effectiveHealing - 1);
   const expected = attackPreview(healed, 'slash');
   const attacked = transition(healed, { type: 'play', index: 0 });
   assert.equal(100 - attacked.enemy.hp, expected);
   assert.equal(attacked.warmth, 0);
+});
+
+test('热可可在残血时也能治疗并为下一张攻击保留暖意', () => {
+  const state = transition(leaveHub(newRun(821, 'manual', 'challenge', 'gaigai')), { type: 'node', id: 'c0r0n0' });
+  state.hp = state.maxHp - 20; state.hand = ['leech']; state.energy = 3; state.enemy.hp = 100; state.enemy.maxHp = 100;
+  const next = transition(state, { type: 'play', index: 0 });
+  const expectedHealing = Math.round(card('leech').heal * DIFFICULTIES.challenge.healing);
+  assert.equal(next.hp, state.hp + expectedHealing);
+  assert.equal(next.warmth, Math.ceil(expectedHealing / 2));
 });
 
 test('小帅会用护盾反击并保留部分剩余护盾', () => {
@@ -271,10 +281,10 @@ test('结算奖励只新增技能牌且优先提供未拥有技能，章节逐�
   assert.ok(late.choices.some(key => !new Set(late.deck.map(key => card(key).baseKey)).has(key)));
 });
 
-test('角色核心牌进入流派成长位且连续四次未出现后保底', () => {
+test('三名角色的核心牌均在连续两次未出现后保底', () => {
   for (const character of Object.keys(CORE_REWARDS)) {
     let state = newRun(920, 'manual', 'standard', character);
-    state.coreRewardMisses = 4;
+    state.coreRewardMisses = 2;
     state.phase = 'combat'; state.enemy = { hp: 1, maxHp: 1, block: 0, mark: 0 }; state.hand = ['slash']; state.energy = 3;
     state = transition(state, { type: 'play', index: 0 });
     assert.equal(state.choices.length, 3);
@@ -282,6 +292,25 @@ test('角色核心牌进入流派成长位且连续四次未出现后保底', ()
     assert.ok(state.choices.includes(CORE_REWARDS[character]));
     assert.equal(state.coreRewardMisses, 0);
   }
+});
+
+test('该该的本命卡是蜂蜜牛奶，并与其他角色使用相同保底', () => {
+  let state = newRun(921, 'manual', 'standard', 'gaigai');
+  state.coreRewardMisses = 2;
+  state.phase = 'combat'; state.enemy = { hp: 1, maxHp: 1, block: 0, mark: 0 }; state.hand = ['slash']; state.energy = 3;
+  state = transition(state, { type: 'play', index: 0 });
+  assert.equal(CORE_REWARDS.gaigai, 'mend');
+  assert.ok(state.choices.includes('mend'));
+  assert.equal(state.coreRewardMisses, 0);
+});
+
+test('卡组按类型和同名牌分组，同名高等级排在前面', () => {
+  const keys = ['guard', 'leech', 'slash', 'leech+2', 'mark', 'guard+3'];
+  const sorted = [...keys].sort(compareCardKeys);
+  assert.ok(sorted.indexOf('leech+2') < sorted.indexOf('leech'));
+  assert.equal(sorted.indexOf('leech'), sorted.indexOf('leech+2') + 1);
+  assert.ok(sorted.indexOf('slash') < sorted.indexOf('mark'));
+  assert.ok(sorted.indexOf('mark') < sorted.indexOf('guard+3'));
 });
 
 test('技能掉落等级按章节基础和章内路段统一递进', () => {
@@ -447,7 +476,7 @@ test('普通战斗后继续本章路线，不会提前跳章', () => {
   const next = transition(map, { type: 'node', id: current.links[0] });
   assert.notEqual(next, map);
   assert.equal(next.stage, 0);
-  assert.ok(['combat', 'camp', 'memory', 'event', 'checkpoint'].includes(next.phase));
+  assert.ok(['combat', 'mystery', 'checkpoint'].includes(next.phase));
 });
 
 test('普通节点返回房车会随机遗失一件本段获得且未装备的物品', () => {
@@ -513,6 +542,59 @@ test('返回房车后重新进入不会刷新当前地图', () => {
   assert.deepEqual(buildChapterMap(0, state.mapSeed), originalMap);
 });
 
+test('返回房车会恢复全部生命，再次启程保持满血', () => {
+  let state = leaveHub(newRun(2204, 'manual', 'standard'));
+  state.hp = 31;
+  state.mapRow = 3; state.currentNode = 'c0r3n0'; state.visited = [state.currentNode];
+  state = transition(state, { type: 'returnHub' });
+  assert.equal(state.hp, state.maxHp);
+  state = transition(state, { type: 'depart', stage: 0 });
+  assert.equal(state.hp, state.maxHp);
+});
+
+test('未知站点结果来自完整随机池，揭晓后可以重置', () => {
+  assert.deepEqual(new Set(MYSTERY_STATIONS.map(station => station.type)), new Set(['event', 'camp', 'memory', 'forget', 'negative']));
+  let state = leaveHub(newRun(2205));
+  const nodes = buildChapterMap(0, state.mapSeed);
+  const mystery = nodes.find(node => node.type === 'mystery');
+  const parent = nodes.find(node => node.links.includes(mystery.id));
+  state.mapRow = parent.row; state.currentNode = parent.id; state.visited = [parent.id];
+  state = transition(state, { type: 'node', id: mystery.id });
+  assert.equal(state.phase, 'mystery');
+  assert.ok(MYSTERY_STATIONS.some(station => station.type === state.mysteryResult));
+  state.mysteryResult = 'negative';
+  state = transition(state, { type: 'mystery' });
+  assert.equal(magicHouseCooldownRemaining(state, mystery.id), 15);
+  const untouched = nodes.find(node => node.type === 'mystery' && node.id !== mystery.id);
+  assert.equal(magicHouseCooldownRemaining(state, untouched.id), 0);
+  state = transition(state, { type: 'negative', choice: 'continue' });
+  assert.equal(state.phase, 'map');
+  assert.equal(state.mysteryResult, null);
+});
+
+test('遗忘回忆站可以不遗忘卡牌并继续赶路', () => {
+  const state = leaveHub(newRun(2205, 'manual', 'standard'));
+  state.phase = 'forget';
+  const originalDeck = [...state.deck];
+  const continued = transition(state, { type: 'forget', index: null });
+  assert.equal(continued.phase, 'map');
+  assert.deepEqual(continued.deck, originalDeck);
+});
+
+test('魔法屋冷却期间问号节点可以经过但不会再次抽取', () => {
+  let state = leaveHub(newRun(2206));
+  const nodes = buildChapterMap(0, state.mapSeed);
+  const mystery = nodes.find(node => node.type === 'mystery');
+  const parent = nodes.find(node => node.links.includes(mystery.id));
+  state.mapRow = parent.row; state.currentNode = parent.id; state.visited = [parent.id];
+  state.magicHouseCooldowns[`${state.mapSeed}:${mystery.id}`] = state.stepsTraveled + 10;
+  state = transition(state, { type: 'node', id: mystery.id });
+  assert.equal(state.phase, 'map');
+  assert.ok(state.visited.includes(mystery.id));
+  assert.equal(magicHouseCooldownRemaining(state, mystery.id), 9);
+  assert.match(state.log[0], /再走 9 步/);
+});
+
 test('路标返回房车不会遗失未装备物品', () => {
   const state = leaveHub(newRun(131));
   const storedItem = { id: 'gear-3', base: 'gardenLedger', rarity: '普通', affixes: [], skill: null };
@@ -553,18 +635,22 @@ test('已点亮的休息站可任选传送且重新走前段不会覆盖最远�
   assert.equal(state.chapterCheckpoints[0], 29);
 });
 
-test('地图只允许沿连线前进，事件选择会返回地图', () => {
+test('地图只允许沿连线前进，未知站点抵达后才揭晓事件', () => {
   const state = leaveHub(newRun(19));
   assert.equal(transition(state, { type: 'node', id: 'c0boss' }), state);
   const nodes = buildChapterMap(0, state.mapSeed);
-  const eventNode = nodes.find(node => node.type === 'event' && node.row > 0);
+  const eventNode = nodes.find(node => node.type === 'mystery' && node.row > 0);
   const parent = nodes.find(node => node.links.includes(eventNode.id));
   state.mapRow = parent.row; state.currentNode = parent.id; state.visited = [parent.id];
-  const event = transition(state, { type: 'node', id: eventNode.id });
+  let event = transition(state, { type: 'node', id: eventNode.id });
+  assert.equal(event.phase, 'mystery');
+  event.mysteryResult = 'event';
+  event = transition(event, { type: 'mystery' });
   assert.equal(event.phase, 'event');
   const next = transition(event, { type: 'event', choice: 'bargain' });
   assert.equal(next.phase, 'map');
   assert.equal(next.gold, state.gold + 22);
+  assert.equal(next.mysteryResult, null);
 });
 
 test('六个区域每次探索五十步且每步最多三个选择', () => {
@@ -573,8 +659,8 @@ test('六个区域每次探索五十步且每步最多三个选择', () => {
     assert.equal(new Set(nodes.map(node => node.row)).size, MAP_STEPS);
     assert.ok(Math.max(...Array.from({ length: MAP_STEPS }, (_, row) => nodes.filter(node => node.row === row).length)) <= 3);
     assert.equal(nodes.filter(node => node.type === 'boss').length, 1);
-    assert.ok(nodes.some(node => node.type === 'camp'));
-    assert.ok(nodes.some(node => node.type === 'memory'));
+    assert.ok(nodes.some(node => node.type === 'mystery'));
+    assert.ok(nodes.every(node => ['battle', 'elite', 'mystery', 'checkpoint', 'boss'].includes(node.type)));
     const byId = Object.fromEntries(nodes.map(node => [node.id, node]));
     let current = nodes.find(node => node.row === 0), steps = 1;
     while (current.links.length) { current = byId[current.links[0]]; steps++; }
@@ -649,7 +735,7 @@ test('标准和挑战难度会降低治疗并让部分伤害穿透护盾', () =>
   assert.ok(transition(challenge, { type: 'end' }).hp < challenge.hp);
 });
 
-test('暖灯休息站可恢复继续或打包热饮返回房车', () => {
+test('暖灯休息站可恢复继续，打包热饮返回房车并回满生命', () => {
   const state = leaveHub(newRun(36, 'manual'));
   state.mapRow = 8; state.currentNode = 'c0r8n1'; state.visited = [state.currentNode]; state.hp = 20;
   const checkpoint = transition(state, { type: 'node', id: 'c0r9checkpoint' });
@@ -681,8 +767,6 @@ test('整理回忆站用两张同名同等级技能合成一张高一级技能',
   assert.equal(merged.deck.filter(key => key === 'slash+2').length, 3);
   assert.deepEqual(merged.unsecuredCards, ['slash+2']);
   assert.deepEqual(merged.journeyCardDrops, ['slash+2']);
-  assert.equal(memoryCooldownRemaining(merged, state.currentNode), 15);
-  assert.equal(memoryCooldownRemaining({ ...merged, stepsTraveled: 16 }, state.currentNode), 5);
 
   const mismatched = structuredClone(state);
   mismatched.phase = 'memory';

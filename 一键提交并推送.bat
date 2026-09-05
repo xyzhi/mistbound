@@ -53,8 +53,11 @@ if "%statusSize%"=="0" goto :push_only
 
 echo Changes found. All repository changes will be committed.
 echo.
-set /p "commitMessage=Commit message (press Enter for default): "
-if not defined commitMessage set "commitMessage=chore: update mistbound"
+for /f "delims=" %%t in ('powershell -NoProfile -Command "Get-Date -Format yyyy-MM-dd_HH-mm-ss"') do set "commitTime=%%t"
+if not defined commitTime set "commitTime=unknown-time"
+set "commitMessage=chore: auto update %commitTime%"
+echo Commit message: %commitMessage%
+call :log "Auto commit message: %commitMessage%"
 
 echo.
 echo [1/3] Staging all changes...
@@ -132,10 +135,11 @@ exit /b 0
 
 :wait_close
 echo.
-choice /c Q /n /m "Press Q to close this window..."
-set "choiceExit=%errorlevel%"
-call :log "Close prompt exit code: %choiceExit%"
-if not "%choiceExit%"=="1" (
+echo Press any key to close this window...
+pause >nul
+set "pauseExit=%errorlevel%"
+call :log "Close prompt exit code: %pauseExit%"
+if not "%pauseExit%"=="0" (
   echo Close prompt failed. Type exit to close this window.
   call :log "Close prompt failed; entering cmd /k"
   cmd /k
