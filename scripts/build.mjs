@@ -5,6 +5,8 @@ import { join } from 'node:path';
 await build({
   base: './',
   build: {
+    target: ['es2017', 'chrome61'],
+    cssTarget: ['chrome61', 'safari18.4'],
     outDir: 'dist',
     emptyOutDir: true,
     assetsInlineLimit: 0,

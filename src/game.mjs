@@ -1,4 +1,5 @@
-export const VERSION = 27;
+export const VERSION = 30;
+export const MEMORY_COOLDOWN_STEPS = 15;
 export const SAVE_KEY = 'goodnight-next-stop.run.v7';
 export const DIFFICULTIES = {
   relaxed: { name: '舒缓', hint: '适合体验剧情，治疗与护盾保持完整效果。', hp: 1, damage: 1, hpDepth: .018, damageDepth: .012, turnDamage: 0, healing: 1, guardPierce: 0, recovery: 1, levelHeal: 6, reward: 1 },
@@ -126,24 +127,23 @@ export const CHECKPOINTS = {
     text: '第一段夜路走完了。先稳住状态，再决定如何继续。',
     choices: [
       { key: 'rest', icon: 'heart', title: '靠窗睡一会儿', text: '回复 35% 生命' },
-      { key: 'supplies', icon: 'backpack', title: '补充沿途物资', text: '获得 30 枚旅币' },
+      { key: 'hotDrink', icon: 'backpack', title: '打包热饮', text: '接下来 3 场战斗首回合 +1 能量，并返回房车' },
     ],
   },
   20: {
     title: '夜路杂货铺',
-    text: '车窗外亮着一间只在深夜营业的小店，可以为后半程换些筹码。',
+    text: '车窗外亮着一间只在深夜营业的小店，旧行李也许能换来更合适的东西。',
     choices: [
-      { key: 'shopCard', icon: 'book', title: '买一张旧明信片', text: '获得 1 张随机卡牌' },
-      { key: 'bargain', icon: 'coins', title: '交换一段旧回忆', text: '失去 8 生命，获得 45 旅币' },
+      { key: 'tradeGear', icon: 'backpack', title: '以旧换新', text: '置换评分最低的未装备物品，品质提升一级并返回房车' },
       { key: 'shortRest', icon: 'heart', title: '借用店后的躺椅', text: '回复 20% 生命' },
     ],
   },
   30: {
     title: '记忆放映室',
-    text: '银幕会重放已经走过的选择，也允许你剪掉一段多余的镜头。',
+    text: '银幕会重放已经走过的选择，也留着一段让人安心的旧时光。',
     choices: [
-      { key: 'trimDeck', icon: 'book', title: '剪掉重复片段', text: '移除 1 张基础问候卡' },
-      { key: 'rememberCard', icon: 'moon', title: '带走一帧回忆', text: '获得 1 张随机卡牌' },
+      { key: 'cinemaRest', icon: 'heart', title: '看一段温柔的回忆', text: '回复 30% 生命' },
+      { key: 'upgradeLowestCard', icon: 'moon', title: '重映精彩片段', text: '最低等级技能牌提升一级并返回房车' },
     ],
   },
   40: {
@@ -151,13 +151,15 @@ export const CHECKPOINTS = {
     text: '终点之前的最后一次停靠。把最需要的东西留在手边。',
     choices: [
       { key: 'deepRest', icon: 'heart', title: '睡到月亮西沉', text: '回复 50% 生命' },
-      { key: 'finalSupplies', icon: 'backpack', title: '装满最后一格行囊', text: '获得 60 枚旅币' },
+      { key: 'emergencyLight', icon: 'backpack', title: '装上应急灯', text: '下次受到致命伤时保留 1 点生命，并返回房车' },
     ],
   },
 };
 export const SEGMENT_NAMES = ['入梦浅滩', '回声小径', '失序深处', '梦核外环', '终夜核心'];
 export const STARTER = ['slash', 'slash', 'slash', 'slash', 'guard', 'guard', 'guard', 'mark', 'heavy', 'focus'];
 export const REWARDS = ['riposte', 'leech', 'quick', 'nova', 'fortify', 'echo', 'mend', 'risk', 'tea', 'listen', 'postcard', 'blanket', 'nightRide', 'kitchenLight', 'unsent', 'photoAlbum', 'morningCall', 'stayAwhile', 'lucidDoor', 'goodnight'];
+export const CORE_REWARDS = { uncle: 'mark', gaigai: 'leech', xiaoshuai: 'fortify' };
+const DROPPABLE_CARDS = [...new Set([...REWARDS, ...Object.values(CORE_REWARDS)])];
 export const CHARACTERS = {
   uncle: {
     name: '大叔', role: '夜班店长', trait: '认真听你说',
@@ -343,12 +345,16 @@ export function itemName(item) {
   const prefix = item.skill ? '会做梦的' : item.affixes?.[0]?.prefix;
   return `${prefix ? `${prefix} ` : ''}${ITEMS[item.base].name}`;
 }
+export function itemStats(item) {
+  if (!item) return {};
+  const totals = { ...itemBaseStats(item), healing: 0, markPower: 0, skillPower: 0 };
+  for (const affix of item.affixes || []) totals[affix.key] += affix.value;
+  return Object.fromEntries(Object.entries(totals).filter(([, value]) => value > 0));
+}
 export function itemLines(item) {
   if (!item) return [];
   const base = ITEMS[item.base];
-  const totals = { ...itemBaseStats(item), healing: 0, markPower: 0, skillPower: 0 };
-  for (const affix of item.affixes || []) totals[affix.key] += affix.value;
-  const lines = Object.entries(totals).filter(([, value]) => value > 0).map(([key, value]) => `${AFFIX_LABELS[key]} +${value}`);
+  const lines = Object.entries(itemStats(item)).map(([key, value]) => `${AFFIX_LABELS[key]} +${value}`);
   if (base.trait) lines.push(base.trait);
   if (item.skill) lines.push(`附带技能：${CARDS[item.skill].name} Lv.${item.skillLevel || 1}`);
   return lines;
@@ -459,6 +465,12 @@ export function buildChapterMap(chapter = 0, mapSeed = chapter + 1) {
   }
   return nodes;
 }
+
+const memoryCooldownKey = (s, nodeId) => `${s.mapSeed}:${nodeId}`;
+export function memoryCooldownRemaining(s, nodeId) {
+  if (!nodeId || !s?.memoryCooldowns) return 0;
+  return Math.max(0, (s.memoryCooldowns[memoryCooldownKey(s, nodeId)] || 0) - (s.stepsTraveled || 0));
+}
 export const MAP_NODES = buildChapterMap(0);
 export function chapterMap(chapter, mapSeed) { return buildChapterMap(chapter, mapSeed); }
 export function cardRank(key) {
@@ -475,12 +487,19 @@ export function rankedCardKey(key, rank, equipmentGranted = String(key || '').en
 }
 export function upgradeCardKey(key, amount = 1) { return rankedCardKey(key, cardRank(key) + amount); }
 export function skillRewardRank(s, key) {
-  const minRank = Math.min(8, Math.max(1, (s?.stage || 0) + 1));
-  let hash = ((s?.mapSeed ?? s?.seed ?? 1) ^ Math.imul((s?.mapRow ?? -1) + 2, 2654435761)) >>> 0;
+  const baseRank = Math.min(8, Math.max(1, (s?.stage || 0) + 1));
+  const row = Math.max(0, Math.min(MAP_STEPS - 1, s?.mapRow ?? 0));
+  const segment = Math.min(4, Math.floor(row / 10));
+  const rankWeights = [[100, 0, 0], [75, 25, 0], [25, 70, 5], [0, 75, 25], [0, 45, 55]];
+  let hash = ((s?.mapSeed ?? s?.seed ?? 1) ^ Math.imul(row + 2, 2654435761)) >>> 0;
   for (const char of cardBaseKey(key)) hash = Math.imul(hash ^ char.charCodeAt(0), 2246822519) >>> 0;
   const roll = hash % 100;
-  const offset = s?.bossFight ? (roll < 35 ? 1 : 2) : s?.elite ? (roll < 25 ? 0 : roll < 70 ? 1 : 2) : (roll < 50 ? 0 : roll < 85 ? 1 : 2);
-  return Math.min(10, minRank + offset);
+  const [rankOne, rankTwo] = rankWeights[segment];
+  const segmentCap = segment === 0 ? 0 : segment === 1 ? 1 : 2;
+  let offset = roll < rankOne ? 0 : roll < rankOne + rankTwo ? 1 : 2;
+  if (s?.elite) offset = Math.min(segmentCap, offset + 1);
+  if (s?.bossFight) offset = 2;
+  return Math.min(10, baseRank + offset);
 }
 function addOrUpgradeCard(s, key, minimumRank = 1) {
   const baseKey = cardBaseKey(key);
@@ -509,9 +528,10 @@ export function card(key) {
     if (c.damage) c.damage = Math.round(c.damage * multiplier);
     if (c.block) c.block = Math.round(c.block * multiplier);
     if (c.heal) c.heal = Math.round(c.heal * multiplier);
-    if (c.mark) c.mark += Math.floor((rank - 1) / 3);
+    if (c.mark) c.mark += Math.ceil((rank - 1) * .7);
     if (c.energy && rank >= 8) c.energy += 1;
     if (c.draw && rank >= 6) c.draw += 1;
+    if (baseKey === 'mark' && rank >= 5) c.draw = rank >= 8 ? 2 : 1;
     if (c.self) c.self = Math.max(1, c.self - Math.floor(rank / 4));
   }
   return c;
@@ -613,7 +633,9 @@ export function equipmentStats(s) {
   }, { attack: 0, block: 0, recovery: 0, firstStrike: 0, healing: 0, markPower: 0, skillPower: 0 });
 }
 function beginBattle(s) {
-  s.phase = 'combat'; s.turn = 1; s.energy = 3; s.weak = 0;
+  const hotDrinkActive = s.hotDrinkBattles > 0;
+  s.phase = 'combat'; s.turn = 1; s.energy = hotDrinkActive ? 4 : 3; s.weak = 0;
+  if (hotDrinkActive) s.hotDrinkBattles--;
   s.warmth = 0; s.traitUsed = false;
   s.battleLog = [];
   s.block = (s.relic ? 2 : 0) + equipmentStats(s).block;
@@ -628,8 +650,15 @@ function beginBattle(s) {
   s.choices = [];
   draw(s, 5);
   log(s, `抵达${foe.place}，遭遇${foe.name}。`);
-  log(s, '第 1 回合开始，能量恢复至 3。');
+  log(s, `第 1 回合开始，能量恢复至 ${s.energy}${hotDrinkActive ? '，热饮让人精神一振' : ''}。`);
   logBattleStatus(s);
+}
+function preventDefeatWithEmergencyLight(s) {
+  if (s.hp > 0 || !s.emergencyLight) return false;
+  s.hp = 1;
+  s.emergencyLight = false;
+  log(s, '应急灯在最后一刻亮起，你保留了 1 点生命。');
+  return true;
 }
 export function newRun(seed = Date.now() >>> 0, battleMode = 'manual', difficulty = 'standard', character = 'uncle') {
   const inventory = [
@@ -638,7 +667,7 @@ export function newRun(seed = Date.now() >>> 0, battleMode = 'manual', difficult
   ];
   const selectedDifficulty = DIFFICULTIES[difficulty] ? difficulty : 'standard';
   const selectedCharacter = CHARACTERS[character] ? character : 'uncle';
-  const s = { version: VERSION, seed: seed >>> 0, mapSeed: seed >>> 0, character: selectedCharacter, warmth: 0, traitUsed: false, difficulty: selectedDifficulty, battleMode: battleMode === 'manual' ? 'manual' : 'auto', tutorialDone: false, phase: 'hub', stage: 0, unlocked: 0, clears: [0, 0, 0, 0, 0, 0], guestRewards: [false, false, false, false, false, false], chapterCheckpoints: [-1, -1, -1, -1, -1, -1], level: 1, xp: 0, nextXp: 45, hp: 70, maxHp: 70, gold: 0, facilities: { kitchen: 0, workshop: 0, rooms: 0 }, commissionClaims: { battles: 0, steps: 0, stories: 0 }, stepsTraveled: 0, relic: false, elite: false, bossFight: false, foe: 0, checkpointRow: -1, unsecuredLoot: [], unsecuredCards: [], journeyCardDrops: [], journeyNewItems: [], journeyNewCards: [], inventory, equipment: { weapon: 'gear-1', armor: 'gear-2', bag: null, scarf: null, charm: null, decor: null }, nextItemId: 3, lastLoot: null, deck: [...CHARACTERS[selectedCharacter].starter], log: [], battleLog: [], played: 0, totalTurns: 0, victories: 0, mapRow: -1, currentNode: null, visited: [] };
+  const s = { version: VERSION, seed: seed >>> 0, mapSeed: seed >>> 0, character: selectedCharacter, warmth: 0, traitUsed: false, coreRewardMisses: 0, hotDrinkBattles: 0, emergencyLight: false, memoryCooldowns: {}, difficulty: selectedDifficulty, battleMode: battleMode === 'manual' ? 'manual' : 'auto', tutorialDone: false, phase: 'hub', stage: 0, unlocked: 0, clears: [0, 0, 0, 0, 0, 0], guestRewards: [false, false, false, false, false, false], chapterCheckpoints: [-1, -1, -1, -1, -1, -1], level: 1, xp: 0, nextXp: 45, hp: 70, maxHp: 70, gold: 0, facilities: { kitchen: 0, workshop: 0, rooms: 0 }, commissionClaims: { battles: 0, steps: 0, stories: 0 }, stepsTraveled: 0, relic: false, elite: false, bossFight: false, foe: 0, checkpointRow: -1, unsecuredLoot: [], unsecuredCards: [], journeyCardDrops: [], journeyNewItems: [], journeyNewCards: [], inventory, equipment: { weapon: 'gear-1', armor: 'gear-2', bag: null, scarf: null, charm: null, decor: null }, nextItemId: 3, lastLoot: null, deck: [...CHARACTERS[selectedCharacter].starter], log: [], battleLog: [], played: 0, totalTurns: 0, victories: 0, mapRow: -1, currentNode: null, visited: [] };
   s.turn = 1; s.energy = 3; s.block = 0; s.weak = 0; s.enemy = { hp: 0, maxHp: 0, block: 0, mark: 0 };
   s.draw = []; s.hand = []; s.discard = []; s.exhaust = []; s.choices = [];
   log(s, '房车在花田边停稳，第一盏夜灯已经亮起。');
@@ -680,23 +709,28 @@ function victory(s) {
   s.lastLoot = dropped.id;
   s.phase = 'reward';
   const unlockedSkills = REWARDS.filter(key => (SKILL_UNLOCKS[key] ?? 0) <= s.stage);
+  const coreReward = CORE_REWARDS[s.character];
   const preferred = unlockedSkills.filter(key => CHARACTERS[s.character].schools.includes(CARDS[key].school));
-  const others = unlockedSkills.filter(key => !preferred.includes(key));
   const owned = new Set(s.deck.map(cardBaseKey));
   const fresh = unlockedSkills.filter(key => !owned.has(key));
   const firstFresh = shuffle(s, fresh.filter(key => preferred.includes(key)))[0] || shuffle(s, fresh)[0];
-  s.choices = firstFresh ? [firstFresh] : [];
+  s.choices = [];
   const addChoice = pool => {
     const candidate = shuffle(s, pool.filter(key => !s.choices.includes(key)))[0];
     if (candidate) s.choices.push(candidate);
   };
-  addChoice(preferred);
-  addChoice(others);
+  addChoice(firstFresh ? [firstFresh] : unlockedSkills.filter(key => key !== coreReward));
+  const showCoreReward = s.coreRewardMisses >= 4 || random(s) < .33;
+  if (showCoreReward) addChoice([coreReward]);
+  else addChoice(unlockedSkills.filter(key => key !== coreReward && (preferred.includes(key) || owned.has(key))));
+  addChoice(unlockedSkills.filter(key => key !== coreReward));
   while (s.choices.length < 3) {
     const before = s.choices.length;
-    addChoice(unlockedSkills);
+    addChoice(unlockedSkills.filter(key => key !== coreReward));
     if (s.choices.length === before) break;
   }
+  if (s.choices.includes(coreReward)) s.coreRewardMisses = 0;
+  else s.coreRewardMisses++;
   log(s, `击败${foe.name}，获得 ${xpGain} 点经验。`);
   if (levels) log(s, `店主升至 ${s.level} 级，生命上限提高。`);
   log(s, `获得${dropped.rarity}装备「${itemName(dropped)}」。`);
@@ -705,7 +739,13 @@ function victory(s) {
 // All game transitions are pure and serializable, so tests and saved runs use the same rules.
 export function transition(state, action) {
   if (!state || !action) return state;
-  const s = structuredClone(state);
+  const s = JSON.parse(JSON.stringify(state));
+  if (action.type === 'viewCard') {
+    const baseKey = cardBaseKey(action.key);
+    if (!CARDS[baseKey]) return state;
+    s.journeyNewCards = (s.journeyNewCards || []).filter(key => key !== baseKey);
+    return s;
+  }
   if (action.type === 'debug') {
     if (action.operation === 'gold') {
       s.gold = Math.min(100000, s.gold + 1000);
@@ -772,7 +812,9 @@ export function transition(state, action) {
   if (action.type === 'tutorialDone' && s.phase === 'combat') { s.tutorialDone = true; return s; }
   if (action.type === 'depart' && s.phase === 'hub') {
     if (!Number.isInteger(action.stage) || action.stage < 0 || action.stage > s.unlocked) return state;
-    const checkpoint = s.chapterCheckpoints?.[action.stage] ?? -1;
+    const latestCheckpoint = s.chapterCheckpoints?.[action.stage] ?? -1;
+    const requestedRow = action.row ?? latestCheckpoint;
+    const checkpoint = requestedRow === -1 || (CHECKPOINT_STEPS.includes(requestedRow + 1) && requestedRow <= latestCheckpoint) ? requestedRow : latestCheckpoint;
     const checkpointNode = checkpoint >= 0 ? `c${action.stage}r${checkpoint}checkpoint` : null;
     s.stage = action.stage; s.phase = 'map'; s.mapRow = checkpoint; s.currentNode = checkpointNode; s.visited = checkpointNode ? [checkpointNode] : []; s.checkpointRow = checkpoint; s.unsecuredLoot = []; s.unsecuredCards = []; s.journeyCardDrops = []; s.journeyNewItems = []; s.journeyNewCards = [];
     s.hp = s.maxHp; s.elite = false; s.bossFight = false;
@@ -827,7 +869,11 @@ export function transition(state, action) {
     s.foe = s.bossFight ? 0 : encounterSeed % encounterCount;
     if (['battle', 'elite', 'boss'].includes(node.type)) { beginBattle(s); return s; }
     if (node.type === 'camp') { s.phase = 'camp'; log(s, '路边的休息站还亮着一盏小灯。'); return s; }
-    if (node.type === 'memory') { s.phase = 'memory'; log(s, '抵达整理回忆站，可以将两张相同技能合成为更高等级。'); return s; }
+    if (node.type === 'memory') {
+      const remaining = memoryCooldownRemaining(s, node.id);
+      if (remaining > 0) { s.phase = 'map'; log(s, `这里的回忆仍在整理中，再走 ${remaining} 步后可以使用。`); return s; }
+      s.phase = 'memory'; log(s, '抵达整理回忆站，可以将两张相同技能合成为更高等级。'); return s;
+    }
     if (node.type === 'checkpoint') { s.phase = 'checkpoint'; log(s, `抵达第 ${node.row + 1} 步夜程路标，房车在梦境边缘停靠。`); return s; }
     s.phase = 'event'; log(s, '岔路深处传来杯碟与旅币碰撞的声音。'); return s;
   }
@@ -837,6 +883,19 @@ export function transition(state, action) {
     if (!item) return state;
     s.equipment[item.slot] = instance.id;
     log(s, `已装备「${itemName(instance)}」。`);
+    return s;
+  }
+  if (action.type === 'equipBest' && s.phase === 'hub') {
+    let changed = 0;
+    for (const slot of Object.keys(SLOT_LABELS)) {
+      const current = itemFor(s, s.equipment[slot]);
+      const best = s.inventory.filter(item => ITEMS[item.base]?.slot === slot).sort((a, b) => itemScore(b) - itemScore(a))[0];
+      if (!best || (current && itemScore(current) >= itemScore(best))) continue;
+      s.equipment[slot] = best.id;
+      changed++;
+    }
+    if (!changed) return state;
+    log(s, `一键换上了 ${changed} 件评分更高的装备。`);
     return s;
   }
   if (action.type === 'reroll' && s.phase === 'hub') {
@@ -963,6 +1022,7 @@ export function transition(state, action) {
     // Draw before discarding the played card to prevent a zero-cost card drawing itself.
     if (c.draw) draw(s, c.draw);
     (c.exhaust ? s.exhaust : s.discard).push(key);
+    preventDefeatWithEmergencyLight(s);
     if (s.hp <= 0) { s.phase = 'lost'; log(s, '旅途暂止于此。'); }
     else if (s.enemy.hp <= 0) victory(s);
     return s;
@@ -997,6 +1057,7 @@ export function transition(state, action) {
     }
     logBattleStatus(s);
     s.totalTurns++;
+    preventDefeatWithEmergencyLight(s);
     if (s.hp <= 0) { s.phase = 'lost'; log(s, '旅途暂止于此。'); return s; }
     if (s.enemy.hp <= 0) { victory(s); return s; }
     const retainedBlock = s.character === 'xiaoshuai' ? Math.floor(s.block * .2) : 0;
@@ -1019,15 +1080,18 @@ export function transition(state, action) {
     }
     s.choices = [];
     if (s.bossFight) {
-      s.clears[s.stage]++;
-      s.unlocked = Math.min(ENEMIES.length - 1, Math.max(s.unlocked, s.stage + 1));
+      const completedStage = s.stage;
+      s.clears[completedStage]++;
+      s.unlocked = Math.min(ENEMIES.length - 1, Math.max(s.unlocked, completedStage + 1));
+      s.stage = Math.min(completedStage + 1, ENEMIES.length - 1);
       s.chapterCheckpoints ||= Array(ENEMIES.length).fill(-1);
-      s.chapterCheckpoints[s.stage] = -1;
       s.mapSeed = Math.floor(random(s) * 4294967296) >>> 0;
+      s.memoryCooldowns = {};
       s.mapRow = -1; s.currentNode = null; s.visited = [];
       s.checkpointRow = -1; s.unsecuredLoot = []; s.unsecuredCards = [];
       s.phase = 'hub'; s.elite = false; s.bossFight = false;
-      log(s, `房车平安返回。${CHAPTERS[s.stage].name}探索次数：${s.clears[s.stage]}。`);
+      log(s, `房车平安返回。${CHAPTERS[completedStage].name}探索次数：${s.clears[completedStage]}。`);
+      if (s.stage > completedStage) log(s, `下一站「${CHAPTERS[s.stage].name}」已经解锁。`);
       return s;
     }
     s.phase = 'map'; s.elite = false; s.bossFight = false; return s;
@@ -1064,6 +1128,8 @@ export function transition(state, action) {
     s.deck.push(upgradedKey);
     s.unsecuredCards = replaceTrackedPair(s.unsecuredCards);
     s.journeyCardDrops = replaceTrackedPair(s.journeyCardDrops);
+    s.memoryCooldowns ||= {};
+    if (s.currentNode) s.memoryCooldowns[memoryCooldownKey(s, s.currentNode)] = s.stepsTraveled + MEMORY_COOLDOWN_STEPS;
     log(s, `整理两张 Lv.${cardRank(sourceKey)}「${name}」，合成为 Lv.${cardRank(upgradedKey)}。`);
     s.phase = 'map'; return s;
   }
@@ -1079,46 +1145,61 @@ export function transition(state, action) {
     const step = s.mapRow + 1;
     const available = CHECKPOINTS[step]?.choices.map(choice => choice.key) || [];
     if (!available.includes(action.choice)) return state;
-    const addRandomCard = () => {
-      const pool = REWARDS.filter(key => (SKILL_UNLOCKS[key] ?? 0) <= s.stage);
-      const key = pool[Math.floor(random(s) * pool.length)];
-      const ranked = rankedCardKey(key, Math.min(10, 1 + Math.floor(s.stage / 2)));
-      s.deck.push(ranked);
-      s.unsecuredCards ||= [];
-      s.unsecuredCards.push(ranked);
-      s.journeyCardDrops ||= [];
-      s.journeyCardDrops.push(ranked);
-      s.journeyNewCards ||= [];
-      if (!s.journeyNewCards.includes(cardBaseKey(ranked))) s.journeyNewCards.push(cardBaseKey(ranked));
-      return card(ranked).name;
-    };
     if (action.choice === 'rest') {
       const gain = Math.min(Math.ceil(s.maxHp * .35), s.maxHp - s.hp); s.hp += gain;
       log(s, `在夜程路标旁睡了一会儿，回复 ${gain} 点生命。`);
-    } else if (action.choice === 'supplies') {
-      s.gold += 30; log(s, '补充沿途物资，获得 30 枚旅币。');
-    } else if (action.choice === 'shopCard') {
-      log(s, `从杂货铺买下「${addRandomCard()}」，加入卡组。`);
-    } else if (action.choice === 'bargain') {
-      const cost = Math.min(8, Math.max(0, s.hp - 1)); s.hp -= cost; s.gold += 45;
-      log(s, `用 ${cost} 点生命交换旧回忆，获得 45 枚旅币。`);
+    } else if (action.choice === 'hotDrink') {
+      s.hotDrinkBattles = 3;
+      log(s, '打包一壶热饮，接下来 3 场战斗首回合获得 1 点额外能量。');
+    } else if (action.choice === 'tradeGear') {
+      const equipped = new Set(Object.values(s.equipment).filter(Boolean));
+      const oldItem = s.inventory.filter(item => !equipped.has(item.id)).sort((a, b) => itemScore(a) - itemScore(b))[0];
+      if (oldItem) {
+        const oldName = itemName(oldItem);
+        const slot = ITEMS[oldItem.base].slot;
+        const pool = CHAPTER_LOOT.slice(0, s.stage + 1).flat().filter(base => ITEMS[base]?.slot === slot && base !== oldItem.base);
+        const base = pool.length ? pool[Math.floor(random(s) * pool.length)] : oldItem.base;
+        const rarityIndex = Math.min(RARITIES.length - 1, Math.max(0, RARITIES.findIndex(rarity => rarity.name === oldItem.rarity)) + 1);
+        const rarity = RARITIES[rarityIndex];
+        const itemLevel = Math.min(60, Math.max(oldItem.itemLevel + 2, itemLevelFor(s)));
+        const replacement = { id: oldItem.id, base, itemLevel, rarity: rarity.name, affixes: rollAffixes(s, rarity.affixes, itemLevel), skill: null, skillLevel: 0 };
+        s.inventory[s.inventory.findIndex(item => item.id === oldItem.id)] = replacement;
+        log(s, `用「${oldName}」换得${rarity.name}装备「${itemName(replacement)}」。`);
+      } else {
+        log(s, '背包里没有可以拿来置换的未装备物品。');
+      }
     } else if (action.choice === 'shortRest') {
       const gain = Math.min(Math.ceil(s.maxHp * .2), s.maxHp - s.hp); s.hp += gain;
       log(s, `在杂货铺后休息片刻，回复 ${gain} 点生命。`);
-    } else if (action.choice === 'trimDeck') {
-      const index = s.deck.findIndex(key => key === 'slash');
-      if (index >= 0 && s.deck.length > 10) { s.deck.splice(index, 1); log(s, '剪掉一张重复的「轻声问候」，卡组变得更精炼。'); }
-      else { s.gold += 25; log(s, '没有可剪掉的片段，放映室补偿了 25 枚旅币。'); }
-    } else if (action.choice === 'rememberCard') {
-      log(s, `从银幕带走「${addRandomCard()}」，加入卡组。`);
+    } else if (action.choice === 'cinemaRest') {
+      const gain = Math.min(Math.ceil(s.maxHp * .3), s.maxHp - s.hp); s.hp += gain;
+      log(s, `看完一段温柔的回忆，回复 ${gain} 点生命。`);
+    } else if (action.choice === 'upgradeLowestCard') {
+      const lowestRank = Math.min(...s.deck.filter(key => cardRank(key) < 10).map(cardRank));
+      const index = s.deck.findIndex(key => cardRank(key) === lowestRank);
+      if (index >= 0) {
+        const oldKey = s.deck[index];
+        const upgradedKey = upgradeCardKey(oldKey);
+        s.deck[index] = upgradedKey;
+        log(s, `重映「${card(oldKey).name}」，从 Lv.${cardRank(oldKey)} 提升至 Lv.${cardRank(upgradedKey)}。`);
+      } else {
+        log(s, '所有技能牌都已达到最高等级。');
+      }
     } else if (action.choice === 'deepRest') {
       const gain = Math.min(Math.ceil(s.maxHp * .5), s.maxHp - s.hp); s.hp += gain;
       log(s, `在终夜整备站睡到月沉，回复 ${gain} 点生命。`);
-    } else if (action.choice === 'finalSupplies') {
-      s.gold += 60; log(s, '装满最后一格行囊，获得 60 枚旅币。');
+    } else if (action.choice === 'emergencyLight') {
+      s.emergencyLight = true;
+      log(s, '装上应急灯，下次受到致命伤时会保留 1 点生命。');
     }
     s.chapterCheckpoints ||= Array(ENEMIES.length).fill(-1);
-    s.checkpointRow = s.mapRow; s.chapterCheckpoints[s.stage] = s.mapRow; s.unsecuredLoot = []; s.unsecuredCards = [];
+    s.checkpointRow = s.mapRow; s.chapterCheckpoints[s.stage] = Math.max(s.chapterCheckpoints[s.stage] ?? -1, s.mapRow); s.unsecuredLoot = []; s.unsecuredCards = [];
+    if (!['rest', 'shortRest', 'cinemaRest', 'deepRest'].includes(action.choice)) {
+      s.phase = 'hub'; s.mapRow = -1; s.currentNode = null; s.visited = []; s.checkpointRow = -1;
+      s.hp = s.maxHp; s.elite = false; s.bossFight = false;
+      log(s, '收获已经存进房车，稍作休整后可以从已点亮的路标继续。');
+      return s;
+    }
     s.phase = 'map'; return s;
   }
   return state;
@@ -1219,15 +1300,19 @@ export function restore(raw) {
     if (s?.version === 26) {
       s.unsecuredCards = [];
       s.journeyCardDrops = [];
-      s.version = VERSION;
+      s.version = 27;
     }
+    if (s?.version === 27) { s.coreRewardMisses = 0; s.version = 28; }
+    if (s?.version === 28) { s.hotDrinkBattles = 0; s.emergencyLight = false; s.version = 29; }
+    if (s?.version === 29) { s.memoryCooldowns = {}; s.version = VERSION; }
     const int = (n, min, max) => Number.isInteger(n) && n >= min && n <= max;
     const validCards = a => Array.isArray(a) && a.length <= 300 && a.every(k => typeof k === 'string' && /^[a-zA-Z]+(?:\+(?:[2-9]|10)?)?(?:~gear)?$/.test(k) && CARDS[cardBaseKey(k)]);
-    if (!s || s.version !== VERSION || typeof s.tutorialDone !== 'boolean' || !CHARACTERS[s.character] || !int(s.warmth, 0, 12) || typeof s.traitUsed !== 'boolean' || !DIFFICULTIES[s.difficulty] || !['auto', 'manual'].includes(s.battleMode) || !['hub', 'map', 'combat', 'reward', 'camp', 'memory', 'checkpoint', 'event', 'lost'].includes(s.phase)) return null;
+    if (!s || s.version !== VERSION || typeof s.tutorialDone !== 'boolean' || !CHARACTERS[s.character] || !int(s.warmth, 0, 12) || typeof s.traitUsed !== 'boolean' || !int(s.coreRewardMisses, 0, 4) || !int(s.hotDrinkBattles, 0, 3) || typeof s.emergencyLight !== 'boolean' || !DIFFICULTIES[s.difficulty] || !['auto', 'manual'].includes(s.battleMode) || !['hub', 'map', 'combat', 'reward', 'camp', 'memory', 'checkpoint', 'event', 'lost'].includes(s.phase)) return null;
     if (!int(s.stage, 0, ENEMIES.length - 1) || !int(s.level, 1, 100) || !int(s.xp, 0, 10000) || !int(s.nextXp, 1, 10000)) return null;
     if (!int(s.unlocked, 0, ENEMIES.length - 1) || !Array.isArray(s.clears) || s.clears.length !== ENEMIES.length || !s.clears.every(n => int(n, 0, 10000))) return null;
     if (!s.facilities || !['kitchen', 'workshop', 'rooms'].every(key => int(s.facilities[key], 0, 3))) return null;
     if (!s.commissionClaims || !['battles', 'steps', 'stories'].every(key => int(s.commissionClaims[key], 0, 10000)) || !int(s.stepsTraveled, 0, 1000000)) return null;
+    if (!s.memoryCooldowns || Array.isArray(s.memoryCooldowns) || Object.keys(s.memoryCooldowns).length > 100 || !Object.entries(s.memoryCooldowns).every(([key, value]) => /^\d+:c\d+r\d+n\d+$/.test(key) && int(value, 0, 1000015))) return null;
     if (!Array.isArray(s.guestRewards) || s.guestRewards.length !== GUESTS.length || !s.guestRewards.every(value => typeof value === 'boolean')) return null;
     if (!Array.isArray(s.chapterCheckpoints) || s.chapterCheckpoints.length !== ENEMIES.length || !s.chapterCheckpoints.every(row => row === -1 || CHECKPOINT_STEPS.includes(row + 1))) return null;
     if (!int(s.maxHp, 70, 700) || !int(s.hp, 0, s.maxHp) || !int(s.gold, 0, 100000)) return null;
@@ -1243,7 +1328,7 @@ export function restore(raw) {
     if (!Array.isArray(s.unsecuredLoot) || s.unsecuredLoot.length > 200 || !s.unsecuredLoot.every(id => typeof id === 'string' && itemFor(s, id)) || new Set(s.unsecuredLoot).size !== s.unsecuredLoot.length) return null;
     if (!validCards(s.unsecuredCards) || !validCards(s.journeyCardDrops)) return null;
     if (!Array.isArray(s.journeyNewItems) || s.journeyNewItems.length > 200 || !s.journeyNewItems.every(id => typeof id === 'string' && itemFor(s, id)) || new Set(s.journeyNewItems).size !== s.journeyNewItems.length) return null;
-    if (!Array.isArray(s.journeyNewCards) || s.journeyNewCards.length > REWARDS.length || !s.journeyNewCards.every(key => REWARDS.includes(key)) || new Set(s.journeyNewCards).size !== s.journeyNewCards.length) return null;
+    if (!Array.isArray(s.journeyNewCards) || s.journeyNewCards.length > DROPPABLE_CARDS.length || !s.journeyNewCards.every(key => DROPPABLE_CARDS.includes(key)) || new Set(s.journeyNewCards).size !== s.journeyNewCards.length) return null;
     if (!int(s.nextItemId, 1, 1000000)) return null;
     if (!s.equipment || !Object.keys(SLOT_LABELS).every(slot => s.equipment[slot] === null || (itemFor(s, s.equipment[slot]) && ITEMS[itemFor(s, s.equipment[slot]).base].slot === slot))) return null;
     if (s.lastLoot !== null && !itemFor(s, s.lastLoot)) return null;
@@ -1251,7 +1336,7 @@ export function restore(raw) {
     const nodes = chapterMap(s.stage, s.mapSeed);
     if (!int(s.mapRow, -1, MAP_STEPS - 1) || (s.currentNode !== null && !nodes.some(n => n.id === s.currentNode))) return null;
     if (!Array.isArray(s.visited) || s.visited.length > MAP_STEPS || !s.visited.every(id => nodes.some(n => n.id === id))) return null;
-    if (!Array.isArray(s.choices) || s.choices.length > 3 || !s.choices.every(k => REWARDS.includes(k))) return null;
+    if (!Array.isArray(s.choices) || s.choices.length > 3 || !s.choices.every(k => DROPPABLE_CARDS.includes(k))) return null;
     if (s.phase === 'combat' && (!s.hp || !s.enemy.hp || !s.enemy.maxHp)) return null;
     if (s.phase === 'lost' && s.hp !== 0) return null;
     if (s.phase === 'reward' && s.enemy.hp !== 0) return null;

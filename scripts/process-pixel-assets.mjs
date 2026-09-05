@@ -18,35 +18,79 @@ for (let index = 0; index < 6; index++) {
 }
 
 const enemyAtlases = (await readdir(root)).filter(file => /^enemies-.+-atlas\.png$/.test(file));
+
+function clearOpaqueBorderComponents(rgba, width, height) {
+  const visited = new Uint8Array(width * height);
+  const queue = new Int32Array(width * height);
+  let head = 0, tail = 0;
+  const enqueue = pixel => {
+    if (visited[pixel] || rgba[pixel * 4 + 3] === 0) return;
+    visited[pixel] = 1;
+    queue[tail++] = pixel;
+  };
+  for (let x = 0; x < width; x++) { enqueue(x); enqueue((height - 1) * width + x); }
+  for (let y = 0; y < height; y++) { enqueue(y * width); enqueue(y * width + width - 1); }
+  while (head < tail) {
+    const pixel = queue[head++];
+    rgba.fill(0, pixel * 4, pixel * 4 + 4);
+    const x = pixel % width, y = Math.floor(pixel / width);
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue;
+      const nextX = x + dx, nextY = y + dy;
+      if (nextX < 0 || nextX >= width || nextY < 0 || nextY >= height) continue;
+      enqueue(nextY * width + nextX);
+    }
+  }
+}
+
 for (const file of enemyAtlases) {
   const source = path.join(root, file);
   const { width, height } = await sharp(source).metadata();
-  const rgb = await sharp(source).removeAlpha().raw().toBuffer();
-  const rgba = Buffer.alloc(width * height * 4);
-  for (let pixel = 0; pixel < width * height; pixel++) {
-    const input = pixel * 3;
-    const outputPixel = pixel * 4;
-    const red = rgb[input], green = rgb[input + 1], blue = rgb[input + 2];
-    const neutral = Math.max(red, green, blue) - Math.min(red, green, blue) <= 8;
-    const checker = neutral && Math.min(red, green, blue) >= 225;
-    rgba[outputPixel] = red;
-    rgba[outputPixel + 1] = green;
-    rgba[outputPixel + 2] = blue;
-    rgba[outputPixel + 3] = checker ? 0 : 255;
-  }
   const name = file.replace('-atlas.png', '');
-  const sourceImage = sharp(rgba, { raw: { width, height, channels: 4 } });
-  const cellWidth = Math.floor(width / 2), cellHeight = Math.floor(height / 2), inset = 44;
+  const frameBounds = [
+    { left: 0, top: 0, width: Math.floor(width * .5), height: Math.floor(height * .5) },
+    { left: Math.floor(width * .5), top: 0, width: width - Math.floor(width * .5), height: Math.floor(height * .5) },
+    { left: 0, top: Math.floor(height * .5), width: Math.floor(width * .5), height: height - Math.floor(height * .5) },
+    // Boss illustrations often cross the nominal center line, so give the final
+    // frame a larger source window before trimming and fitting it into its cell.
+    { left: Math.floor(width * .43), top: Math.floor(height * .43), width: width - Math.floor(width * .43), height: height - Math.floor(height * .43) },
+  ];
+
   const frames = [];
   for (let frame = 0; frame < 4; frame++) {
-    const left = (frame % 2) * cellWidth + inset;
-    const top = Math.floor(frame / 2) * cellHeight + inset;
-    const input = await sourceImage.clone()
-      .extract({ left, top, width: cellWidth - inset * 2, height: cellHeight - inset * 2 })
-      .resize(360, 360, { fit: 'contain', kernel: 'nearest', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    const bounds = frameBounds[frame];
+    const rgb = await sharp(source).extract(bounds).removeAlpha().raw().toBuffer();
+    const rgba = Buffer.alloc(bounds.width * bounds.height * 4);
+    for (let pixel = 0; pixel < bounds.width * bounds.height; pixel++) {
+      const inputOffset = pixel * 3, outputOffset = pixel * 4;
+      const red = rgb[inputOffset], green = rgb[inputOffset + 1], blue = rgb[inputOffset + 2];
+      const checker = Math.max(red, green, blue) - Math.min(red, green, blue) <= 24
+        && Math.min(red, green, blue) >= 205;
+      rgba[outputOffset] = checker ? 0 : red;
+      rgba[outputOffset + 1] = checker ? 0 : green;
+      rgba[outputOffset + 2] = checker ? 0 : blue;
+      rgba[outputOffset + 3] = checker ? 0 : 255;
+    }
+    clearOpaqueBorderComponents(rgba, bounds.width, bounds.height);
+    const resized = await sharp(rgba, { raw: { width: bounds.width, height: bounds.height, channels: 4 } })
+      .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 }, threshold: 2 })
+      .resize(348, 348, { fit: 'contain', kernel: 'nearest', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .ensureAlpha()
+      .raw()
+      .toBuffer();
+    for (let pixel = 0; pixel < 348 * 348; pixel++) {
+      const offset = pixel * 4;
+      if (resized[offset + 3] === 0) resized.fill(0, offset, offset + 4);
+    }
+    const input = await sharp(resized, { raw: { width: 348, height: 348, channels: 4 } })
       .png()
       .toBuffer();
-    frames.push({ input, left: (frame % 2) * 384 + 12, top: Math.floor(frame / 2) * 384 + 12 });
+    if (frame === 3) {
+      await sharp(resized, { raw: { width: 348, height: 348, channels: 4 } })
+        .png({ compressionLevel: 9 })
+        .toFile(path.join(output, `${name}-boss.png`));
+    }
+    frames.push({ input, left: (frame % 2) * 384 + 18, top: Math.floor(frame / 2) * 384 + 18 });
   }
   await sharp({ create: { width: 768, height: 768, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
     .composite(frames)

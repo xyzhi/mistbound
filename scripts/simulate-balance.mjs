@@ -58,6 +58,8 @@ function settle(state, useGear, mode) {
     next = transition(next, { type: 'camp', choice: 'rest' });
   } else if (next.phase === 'event') {
     next = transition(next, { type: 'event', choice: 'spring' });
+  } else if (next.phase === 'memory') {
+    next = transition(next, { type: 'memory', cardKey: null });
   } else if (next.phase === 'checkpoint') {
     next = transition(next, { type: 'checkpoint', choice: 'rest' });
   }

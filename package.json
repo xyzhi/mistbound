@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "assets": "node scripts/process-pixel-assets.mjs",
+    "audio": "node scripts/embed-audio.mjs",
     "dev": "vite --host 127.0.0.1",
+    "prebuild": "npm run audio",
     "build": "node scripts/build.mjs",
     "test": "node --test --test-isolation=none tests/*.test.mjs"
   },
