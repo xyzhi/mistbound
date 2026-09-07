@@ -351,15 +351,13 @@ test('满级技能与初级技能形成明显数值代差', () => {
   assert.ok(card('guard+10').block >= card('guard').block * 4);
 });
 
-test('认真倾听以弱点和抽牌交替成长', () => {
-  const progression = [
-    [2, 0], [3, 0], [4, 0], [5, 0], [5, 1],
-    [6, 1], [7, 1], [7, 2], [8, 2], [9, 2],
-  ];
-  progression.forEach(([mark, draw], index) => {
+test('认真倾听每两级增加弱点且每级增加护盾', () => {
+  const progression = [3, 3, 4, 4, 5, 5, 6, 6, 7, 7];
+  progression.forEach((mark, index) => {
     const ranked = card(index === 0 ? 'mark' : `mark+${index + 1}`);
     assert.equal(ranked.mark, mark);
-    assert.equal(ranked.draw || 0, draw);
+    assert.equal(ranked.block, index + 1);
+    assert.equal(ranked.draw || 0, 0);
   });
 });
 

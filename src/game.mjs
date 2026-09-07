@@ -9,7 +9,7 @@ export const DIFFICULTIES = {
 export const CARDS = {
   slash: { name: '轻声问候', school: '倾听', type: 'attack', cost: 1, damage: 7, icon: 'heart', flavor: '一句问候，是故事愿意开始的地方。' },
   guard: { name: '深呼吸', school: '陪伴', type: 'skill', cost: 1, block: 6, icon: 'wind', flavor: '先让呼吸慢下来。' },
-  mark: { name: '认真倾听', school: '倾听', type: 'spell', cost: 1, mark: 2, icon: 'target', flavor: '没有被听见的话，会留在梦里。' },
+  mark: { name: '认真倾听', school: '倾听', type: 'spell', cost: 1, mark: 3, block: 1, icon: 'target', flavor: '没有被听见的话，会留在梦里。' },
   heavy: { name: '说出真心话', school: '倾听', type: 'attack', cost: 2, damage: 17, icon: 'sparkles', flavor: '真话很重，也足以推开一扇门。' },
   focus: { name: '整理思绪', school: '清醒梦', type: 'skill', cost: 0, energy: 1, exhaust: true, icon: 'sparkles', flavor: '把纷乱的念头一件件放好。' },
   riposte: { name: '我在这里', school: '陪伴', type: 'attack', cost: 1, damage: 5, block: 5, icon: 'heart', flavor: '回应本身，就能让梦安静一点。' },
@@ -545,8 +545,11 @@ export function card(key) {
     if (c.mark) c.mark += Math.ceil((rank - 1) * .7);
     if (c.energy && rank >= 8) c.energy += 1;
     if (c.draw && rank >= 6) c.draw += 1;
-    if (baseKey === 'mark' && rank >= 5) c.draw = rank >= 8 ? 2 : 1;
     if (c.self) c.self = Math.max(1, c.self - Math.floor(rank / 4));
+  }
+  if (baseKey === 'mark') {
+    c.mark = 3 + Math.floor((rank - 1) / 2);
+    c.block = rank;
   }
   return c;
 }
