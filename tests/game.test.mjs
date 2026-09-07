@@ -136,6 +136,14 @@ test('热可可在残血时也能治疗并为下一张攻击保留暖意', () =>
   assert.equal(next.warmth, Math.ceil(expectedHealing / 2));
 });
 
+test('我在这里、热可可和蜂蜜牛奶的一级基础收益一致', () => {
+  const total = key => {
+    const value = card(key);
+    return (value.damage || 0) + (value.block || 0) + (value.heal || 0);
+  };
+  assert.deepEqual(['riposte', 'leech', 'mend'].map(total), [10, 10, 10]);
+});
+
 test('小帅会用护盾反击并保留部分剩余护盾', () => {
   const state = transition(leaveHub(newRun(83, 'manual', 'standard', 'xiaoshuai')), { type: 'node', id: 'c0r0n0' });
   state.block = 30; state.enemy.hp = 100; state.enemy.maxHp = 100;
