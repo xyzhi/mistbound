@@ -1,21 +1,7 @@
-import { CHARACTERS, DIFFICULTIES, ITEMS, attackPreview, buildChapterMap, card, intent, itemFor, newRun, transition } from '../src/game.mjs';
+import { CHARACTERS, DIFFICULTIES, attackPreview, buildChapterMap, card, intent, newRun, transition } from '../src/game.mjs';
 
 const RUNS = Number(process.argv[2] || 100);
 const TARGET_ROW = Number(process.argv[3] || 9);
-
-function autoEquip(state) {
-  const item = itemFor(state, state.lastLoot);
-  if (!item) return state;
-  const definition = ITEMS[item.base];
-  const current = itemFor(state, state.equipment[definition.slot]);
-  const score = value => {
-    if (!value) return -1;
-    const base = ITEMS[value.base];
-    const affixes = (value.affixes || []).reduce((sum, affix) => sum + affix.value, 0);
-    return (base.attack || 0) * 2 + (base.block || 0) * 1.5 + (base.recovery || 0) * 2 + (base.firstStrike || 0) + affixes + (value.skill ? 8 : 0);
-  };
-  return score(item) > score(current) ? transition(state, { type: 'equip', key: item.id }) : state;
-}
 
 function chooseManualCard(state) {
   const move = intent(state);
@@ -41,7 +27,7 @@ function chooseManualCard(state) {
   return best.index;
 }
 
-function settle(state, useGear, mode) {
+function settle(state, mode) {
   let next = state;
   let actions = 0;
   while (next.phase === 'combat' && actions++ < 300) {
@@ -51,17 +37,25 @@ function settle(state, useGear, mode) {
       next = transition(next, index >= 0 ? { type: 'play', index } : { type: 'end' });
     }
   }
-  if (next.phase === 'reward') {
-    if (useGear) next = autoEquip(next);
-    next = transition(next, { type: 'reward', key: next.choices[0] ?? null });
-  } else if (next.phase === 'camp') {
-    next = transition(next, { type: 'camp', choice: 'rest' });
-  } else if (next.phase === 'event') {
-    next = transition(next, { type: 'event', choice: 'spring' });
-  } else if (next.phase === 'memory') {
-    next = transition(next, { type: 'memory', cardKey: null });
-  } else if (next.phase === 'checkpoint') {
-    next = transition(next, { type: 'checkpoint', choice: 'rest' });
+  let resolutions = 0;
+  while (!['map', 'lost'].includes(next.phase) && resolutions++ < 10) {
+    if (next.phase === 'reward') {
+      next = transition(next, { type: 'reward', key: next.choices[0] ?? null });
+    } else if (next.phase === 'mystery') {
+      next = transition(next, { type: 'mystery' });
+    } else if (next.phase === 'camp') {
+      next = transition(next, { type: 'camp', choice: 'rest' });
+    } else if (next.phase === 'event') {
+      next = transition(next, { type: 'event', choice: 'spring' });
+    } else if (next.phase === 'memory') {
+      next = transition(next, { type: 'memory', cardKey: null });
+    } else if (next.phase === 'forget') {
+      next = transition(next, { type: 'forget', index: null });
+    } else if (next.phase === 'negative') {
+      next = transition(next, { type: 'negative', choice: 'continue' });
+    } else if (next.phase === 'checkpoint') {
+      next = transition(next, { type: 'checkpoint', choice: 'rest' });
+    } else break;
   }
   return next;
 }
@@ -79,7 +73,7 @@ function simulate(seed, difficulty, character, useGear, mode) {
       return (danger[a.type] ?? 9) - (danger[b.type] ?? 9) || a.x - b.x;
     })[0];
     if (!target) break;
-    state = settle(transition(state, { type: 'node', id: target.id }), useGear, mode);
+    state = settle(transition(state, { type: 'node', id: target.id }), mode);
   }
   return { survived: state.phase !== 'lost' && state.mapRow >= TARGET_ROW, row: state.mapRow, hp: state.hp };
 }
@@ -92,7 +86,7 @@ for (const difficulty of ['standard', 'challenge']) {
         const survived = results.filter(result => result.survived).length;
         const averageRow = results.reduce((sum, result) => sum + Math.max(0, result.row), 0) / results.length;
         const averageHp = results.filter(result => result.survived).reduce((sum, result) => sum + result.hp, 0) / Math.max(1, survived);
-        console.log(`${difficulty.padEnd(9)} ${character.padEnd(9)} ${mode.padEnd(6)} ${useGear ? 'auto-equip' : 'no-gear   '} survive=${String(survived).padStart(3)}/${RUNS} avg-row=${averageRow.toFixed(1)} avg-hp=${averageHp.toFixed(1)}`);
+        console.log(`${difficulty.padEnd(9)} ${character.padEnd(9)} ${mode.padEnd(6)} ${useGear ? 'starter-gear' : 'no-gear    '} survive=${String(survived).padStart(3)}/${RUNS} avg-row=${averageRow.toFixed(1)} avg-hp=${averageHp.toFixed(1)}`);
       }
     }
   }

@@ -2,9 +2,9 @@ export const VERSION = 34;
 export const MEMORY_COOLDOWN_STEPS = 15;
 export const SAVE_KEY = 'goodnight-next-stop.run.v7';
 export const DIFFICULTIES = {
-  relaxed: { name: '舒缓', hint: '适合体验剧情，治疗与护盾保持完整效果。', hp: 1, damage: 1, hpDepth: .018, damageDepth: .012, turnDamage: 0, healing: 1, guardPierce: 0, recovery: 1, levelHeal: 6, reward: 1 },
-  standard: { name: '标准', hint: '敌人会逐回合增强，10% 伤害穿透护盾。', hp: 1.6, damage: 1.65, hpDepth: .032, damageDepth: .03, turnDamage: .1, healing: .65, guardPierce: .1, recovery: .5, levelHeal: 2, reward: 1.2 },
-  challenge: { name: '挑战', hint: '需要手动出牌与装备成长，22% 伤害穿透护盾。', hp: 2.05, damage: 2.08, hpDepth: .045, damageDepth: .043, turnDamage: .18, healing: .45, guardPierce: .22, recovery: 0, levelHeal: 0, reward: 1.45 },
+  relaxed: { name: '舒缓', hint: '适合体验剧情，敌人压力较低，护盾可以完整抵挡伤害。', hp: 1, damage: 1, hpDepth: .018, damageDepth: .012, turnDamage: 0, guardPierce: 0, recovery: 1, levelHeal: 6, reward: 1 },
+  standard: { name: '标准', hint: '敌人攻势更明确，16% 伤害穿透护盾，需要装备支持自动托管。', hp: 1.45, damage: 1.98, hpDepth: .03, damageDepth: .038, turnDamage: .14, guardPierce: .16, recovery: .4, levelHeal: 2, reward: 1.2 },
+  challenge: { name: '挑战', hint: '敌人伤害高且有 25% 护盾穿透，需要手动出牌与装备成长。', hp: 1.7, damage: 2.18, hpDepth: .04, damageDepth: .047, turnDamage: .2, guardPierce: .25, recovery: 0, levelHeal: 0, reward: 1.45 },
 };
 export const CARDS = {
   slash: { name: '轻声问候', school: '倾听', type: 'attack', cost: 1, damage: 7, icon: 'heart', flavor: '一句问候，是故事愿意开始的地方。' },
@@ -13,7 +13,7 @@ export const CARDS = {
   heavy: { name: '说出真心话', school: '倾听', type: 'attack', cost: 2, damage: 17, icon: 'sparkles', flavor: '真话很重，也足以推开一扇门。' },
   focus: { name: '整理思绪', school: '清醒梦', type: 'skill', cost: 0, energy: 1, exhaust: true, icon: 'sparkles', flavor: '把纷乱的念头一件件放好。' },
   riposte: { name: '我在这里', school: '陪伴', type: 'attack', cost: 1, damage: 5, block: 5, icon: 'heart', flavor: '回应本身，就能让梦安静一点。' },
-  leech: { name: '热可可', school: '料理', type: 'attack', cost: 1, damage: 6, heal: 7, icon: 'heart', flavor: '杯沿的热气替你说了没关系。' },
+  leech: { name: '热可可', school: '料理', type: 'attack', cost: 1, damage: 6, heal: 5, icon: 'heart', flavor: '杯沿的热气替你说了没关系。' },
   quick: { name: '沿途来信', school: '书信', type: 'attack', cost: 1, damage: 5, draw: 1, icon: 'wind', flavor: '邮戳来自一个还没抵达的地方。' },
   nova: { name: '再次确认', school: '倾听', type: 'attack', cost: 2, damage: 10, hits: 2, icon: 'target', flavor: '重要的话，值得再问一次。' },
   fortify: { name: '安静陪伴', school: '陪伴', type: 'skill', cost: 1, block: 10, icon: 'shield', flavor: '不急着回答，也是一种回答。' },
@@ -1017,7 +1017,7 @@ export function transition(state, action) {
     const warmthBonus = c.damage && s.character === 'gaigai' ? s.warmth : 0;
     if (warmthBonus) s.warmth = 0;
     const missingHp = s.maxHp - s.hp;
-    const effectiveHealing = c.heal ? Math.max(1, Math.round((c.heal + stats.healing) * (DIFFICULTIES[s.difficulty]?.healing || 1))) : 0;
+    const effectiveHealing = c.heal ? c.heal + stats.healing : 0;
     const healed = c.heal ? Math.min(effectiveHealing, missingHp) : 0;
     const overheal = c.heal ? Math.max(0, effectiveHealing - healed) : 0;
     let warmthGained = 0;

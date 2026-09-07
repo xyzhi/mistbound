@@ -119,7 +119,7 @@ test('该该把一半实际治疗和全部溢出治疗转为暖意并追加到�
   const state = transition(leaveHub(newRun(82, 'manual', 'standard', 'gaigai')), { type: 'node', id: 'c0r0n0' });
   state.hp = state.maxHp - 1; state.hand = ['mend', 'slash']; state.energy = 3; state.enemy.hp = 100; state.enemy.maxHp = 100;
   const healed = transition(state, { type: 'play', index: 0 });
-  const effectiveHealing = Math.round(card('mend').heal * DIFFICULTIES.standard.healing);
+  const effectiveHealing = card('mend').heal;
   assert.equal(healed.warmth, Math.ceil(1 / 2) + effectiveHealing - 1);
   const expected = attackPreview(healed, 'slash');
   const attacked = transition(healed, { type: 'play', index: 0 });
@@ -131,7 +131,7 @@ test('热可可在残血时也能治疗并为下一张攻击保留暖意', () =>
   const state = transition(leaveHub(newRun(821, 'manual', 'challenge', 'gaigai')), { type: 'node', id: 'c0r0n0' });
   state.hp = state.maxHp - 20; state.hand = ['leech']; state.energy = 3; state.enemy.hp = 100; state.enemy.maxHp = 100;
   const next = transition(state, { type: 'play', index: 0 });
-  const expectedHealing = Math.round(card('leech').heal * DIFFICULTIES.challenge.healing);
+  const expectedHealing = card('leech').heal;
   assert.equal(next.hp, state.hp + expectedHealing);
   assert.equal(next.warmth, Math.ceil(expectedHealing / 2));
 });
@@ -720,14 +720,14 @@ test('开局难度贯穿整局且会改变敌人强度', () => {
   assert.ok(standardBattle.enemy.maxHp > relaxedBattle.enemy.maxHp);
 });
 
-test('标准和挑战难度会降低治疗并让部分伤害穿透护盾', () => {
+test('所有难度均按卡面治疗，标准和挑战难度由护盾穿透提高压力', () => {
   const relaxed = enterBattle(551, 'manual');
   relaxed.difficulty = 'relaxed'; relaxed.hp = 40; relaxed.hand = ['mend']; relaxed.energy = 1;
   const relaxedHeal = transition(relaxed, { type: 'play', index: 0 }).hp - relaxed.hp;
   const challenge = structuredClone(relaxed);
   challenge.difficulty = 'challenge';
   const challengeHeal = transition(challenge, { type: 'play', index: 0 }).hp - challenge.hp;
-  assert.ok(relaxedHeal > challengeHeal);
+  assert.equal(relaxedHeal, challengeHeal);
 
   relaxed.hand = []; relaxed.block = 100;
   challenge.hand = []; challenge.block = 100;
