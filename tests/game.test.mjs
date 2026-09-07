@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { CARDS, CHARACTERS, CHAPTER_LOOT, CHECKPOINTS, CORE_REWARDS, DIFFICULTIES, ENCOUNTERS, ENEMIES, EQUIPMENT_ART, ITEMS, MAP_STEPS, MYSTERY_STATIONS, attackPreview, buildChapterMap, card, chooseAutoCard, commissionStatus, compareCardKeys, enemyFor, equipmentStats, facilityCost, itemBaseStats, itemFor, itemStats, itemTier, itemUpgradeCost, magicHouseCooldownRemaining, newRun, rerollCost, restore, serialize, skillRewardRank, transition } from '../src/game.mjs';
+import { CARDS, CHARACTERS, CHAPTER_LOOT, CHECKPOINTS, CORE_REWARDS, DIFFICULTIES, ENCOUNTERS, ENEMIES, EQUIPMENT_ART, ITEMS, MAP_STEPS, MYSTERY_STATIONS, attackPreview, buildChapterMap, card, chooseAutoCard, commissionStatus, compareCardKeys, enemyFor, equipmentSkillDropScale, equipmentStats, facilityCost, itemBaseStats, itemFor, itemStats, itemTier, itemUpgradeCost, magicHouseCooldownRemaining, newRun, rerollCost, restore, serialize, skillRewardRank, transition } from '../src/game.mjs';
 
 const leaveHub = (state, stage = 0) => transition(state, { type: 'depart', stage });
 const enterBattle = (seed, mode = 'manual') => transition(leaveHub(newRun(seed, mode)), { type: 'node', id: 'c0r0n0' });
@@ -192,6 +192,12 @@ test('装备会真实改变攻击与回合格挡', () => {
   const battle = transition(leaveHub(state), { type: 'node', id: 'c0r0n0' });
   assert.equal(battle.block, 1);
   assert.equal(attackPreview(battle, 'slash'), 10);
+});
+
+test('普通怪技能装备掉率逐章开放且精英怪不受衰减', () => {
+  assert.deepEqual(Array.from({ length: 6 }, (_, stage) => equipmentSkillDropScale(stage)), [.15, .3, .45, .6, .8, 1]);
+  assert.equal(equipmentSkillDropScale(0, true), 1);
+  assert.equal(equipmentSkillDropScale(5, true), 1);
 });
 
 test('胜利获得经验、升级并掉落装备', () => {

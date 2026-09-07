@@ -412,6 +412,10 @@ function itemLevelFor(s) {
   const bonus = (s.elite ? 2 : 0) + (s.bossFight ? 4 : 0);
   return Math.min(60, Math.max(1, s.stage * 10 + 1 + Math.floor(depth / 5) + Math.floor(random(s) * 3) + bonus));
 }
+export function equipmentSkillDropScale(stage, boosted = false) {
+  if (boosted) return 1;
+  return [.15, .3, .45, .6, .8, 1][Math.max(0, Math.min(5, stage || 0))];
+}
 function rollItem(s, base, boosted = false) {
   const itemLevel = itemLevelFor(s);
   const qualityRoll = random(s) + s.stage * .035 + (boosted ? .22 : 0);
@@ -422,7 +426,11 @@ function rollItem(s, base, boosted = false) {
   const unlockedSkills = REWARDS.filter(key => (SKILL_UNLOCKS[key] ?? 0) <= s.stage);
   const preferred = unlockedSkills.filter(key => CHARACTERS[s.character]?.schools.includes(CARDS[key].school));
   const skillPool = preferred.length && random(s) < .7 ? preferred : unlockedSkills;
-  const skill = ITEMS[base].skill || (random(s) < skillChance ? skillPool[Math.floor(random(s) * skillPool.length)] : null);
+  const skillScale = equipmentSkillDropScale(s.stage, boosted);
+  const innateSkill = ITEMS[base].skill;
+  const skill = innateSkill
+    ? (random(s) < skillScale ? innateSkill : null)
+    : (random(s) < skillChance * skillScale ? skillPool[Math.floor(random(s) * skillPool.length)] : null);
   const skillLevel = skill ? Math.min(10, 1 + Math.floor((itemLevel - 1) / 12) + (rarityIndex >= 2 ? 1 : 0)) : 0;
   return { id: `gear-${s.nextItemId++}`, base, itemLevel, rarity: rarity.name, affixes, skill, skillLevel };
 }
