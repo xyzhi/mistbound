@@ -5,7 +5,7 @@ const TARGET_ROW = Number(process.argv[3] || 9);
 
 function chooseManualCard(state) {
   const move = intent(state);
-  const incoming = move.kind === 'guard' ? 0 : move.value * (move.hits || 1);
+  const incoming = ['attack', 'curse', 'chargedAttack', 'dispel'].includes(move.kind) ? move.value * (move.hits || 1) : 0;
   const pierce = DIFFICULTIES[state.difficulty].guardPierce;
   const blockable = Math.max(0, incoming - Math.ceil(incoming * pierce));
   let best = { index: -1, score: -Infinity };
@@ -40,7 +40,7 @@ function settle(state, mode) {
   let resolutions = 0;
   while (!['map', 'lost'].includes(next.phase) && resolutions++ < 10) {
     if (next.phase === 'reward') {
-      next = transition(next, { type: 'reward', key: next.choices[0] ?? null });
+      next = transition(next, { type: 'reward', key: next.choices[0] });
     } else if (next.phase === 'mystery') {
       next = transition(next, { type: 'mystery' });
     } else if (next.phase === 'camp') {
@@ -49,8 +49,8 @@ function settle(state, mode) {
       next = transition(next, { type: 'event', choice: 'spring' });
     } else if (next.phase === 'memory') {
       next = transition(next, { type: 'memory', cardKey: null });
-    } else if (next.phase === 'forget') {
-      next = transition(next, { type: 'forget', index: null });
+    } else if (next.phase === 'loadout') {
+      next = transition(next, { type: 'leaveLoadout' });
     } else if (next.phase === 'negative') {
       next = transition(next, { type: 'negative', choice: 'continue' });
     } else if (next.phase === 'checkpoint') {

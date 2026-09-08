@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { CARDS, CHARACTERS, CHAPTER_LOOT, CHECKPOINTS, CORE_REWARDS, DIFFICULTIES, ENCOUNTERS, ENEMIES, EQUIPMENT_ART, ITEMS, MAP_STEPS, MYSTERY_STATIONS, attackPreview, buildChapterMap, card, chooseAutoCard, commissionStatus, compareCardKeys, enemyFor, equipmentSkillDropScale, equipmentStats, facilityCost, itemBaseStats, itemFor, itemStats, itemTier, itemUpgradeCost, magicHouseCooldownRemaining, newRun, rerollCost, restore, serialize, skillRewardRank, transition } from '../src/game.mjs';
+import { CARDS, CHARACTERS, CHAPTER_LOOT, CHECKPOINTS, CHECKPOINT_STEPS, CORE_REWARDS, DIFFICULTIES, ENCOUNTERS, ENEMIES, EQUIPMENT_ART, ITEMS, MAP_STEPS, MYSTERY_STATIONS, REWARDS, SKILL_UNLOCKS, attackPreview, buildChapterMap, card, chooseAutoCard, commissionStatus, compareCardKeys, enemyFor, equipmentDropCount, equipmentInnateSkillChance, equipmentRandomSkillChance, equipmentRarityChances, equipmentSkillDropScale, equipmentStats, facilityCost, intent, itemBaseStats, itemFor, itemStats, itemTier, itemUpgradeCost, magicHouseCooldownRemaining, newRun, rerollCost, restore, serialize, skillRewardRank, transition } from '../src/game.mjs';
 
 const leaveHub = (state, stage = 0) => transition(state, { type: 'depart', stage });
 const enterBattle = (seed, mode = 'manual') => transition(leaveHub(newRun(seed, mode)), { type: 'node', id: 'c0r0n0' });
@@ -36,7 +36,7 @@ test('结束回合会执行敌人意图并开始下一回合', () => {
   const next = transition(state, { type: 'end' });
   assert.equal(next.turn, 2);
   assert.equal(next.energy, 3);
-  assert.ok(next.hp < state.hp || next.enemy.block > 0);
+  assert.ok(next.hp < state.hp || next.enemy.block > 0 || next.enemy.charge > 0);
   assert.ok(next.battleLog.some(line => line.startsWith(foeName)));
 });
 
@@ -65,14 +65,37 @@ test('三名角色拥有不同初始牌组并贯穿存档', () => {
   assert.deepEqual(restore(serialize(gaigai)), gaigai);
 });
 
-test('大叔每回合首次发现弱点会额外抽牌', () => {
+test('房车功能的新标签分别记录已读状态', () => {
+  const state = newRun(801, 'manual');
+  assert.deepEqual(state.featureSeen, { bag: false, workshop: false, guests: false });
+  const bagSeen = transition(state, { type: 'viewFeature', key: 'bag' });
+  assert.deepEqual(bagSeen.featureSeen, { bag: true, workshop: false, guests: false });
+  const workshopSeen = transition(bagSeen, { type: 'viewFeature', key: 'workshop' });
+  assert.deepEqual(workshopSeen.featureSeen, { bag: true, workshop: true, guests: false });
+  const traveling = leaveHub(workshopSeen);
+  assert.equal(transition(traveling, { type: 'viewFeature', key: 'guests' }), traveling);
+});
+
+test('大叔每回合首次发现弱点会增加百分之三十层数并额外抽牌', () => {
   const state = enterBattle(81);
   state.hand = ['mark', 'mark']; state.draw = ['slash', 'guard']; state.energy = 3;
   const first = transition(state, { type: 'play', index: 0 });
   assert.equal(first.hand.length, 2);
   assert.equal(first.traitUsed, true);
+  assert.equal(first.enemy.mark, 4);
   const second = transition(first, { type: 'play', index: 0 });
   assert.equal(second.hand.length, 1);
+  assert.equal(second.enemy.mark, 7);
+  assert.ok(first.battleLog.some(line => line.includes('特性额外 1 层')));
+});
+
+test('大叔的首次弱点加成会计算装备提供的弱点强化', () => {
+  const state = enterBattle(810);
+  state.inventory.find(item => item.id === state.equipment.weapon).affixes = [{ key: 'markPower', value: 2 }];
+  state.hand = ['mark']; state.draw = []; state.energy = 3;
+  const next = transition(state, { type: 'play', index: 0 });
+  assert.equal(next.enemy.mark, 7);
+  assert.ok(next.battleLog.some(line => line.includes('特性额外 2 层')));
 });
 
 test('每段攻击只消耗一层弱点，多段攻击可以连续触发', () => {
@@ -115,12 +138,12 @@ test('弱点伤害由当前层数决定而不随攻击力变化', () => {
   assert.equal(attackPreview(high, 'slash'), 5);
 });
 
-test('该该把一半实际治疗和全部溢出治疗转为暖意并追加到下一次攻击', () => {
+test('该该每三点最终治疗量转为一点暖意并追加到下一次攻击', () => {
   const state = transition(leaveHub(newRun(82, 'manual', 'standard', 'gaigai')), { type: 'node', id: 'c0r0n0' });
   state.hp = state.maxHp - 1; state.hand = ['mend', 'slash']; state.energy = 3; state.enemy.hp = 100; state.enemy.maxHp = 100;
   const healed = transition(state, { type: 'play', index: 0 });
   const effectiveHealing = card('mend').heal;
-  assert.equal(healed.warmth, Math.ceil(1 / 2) + effectiveHealing - 1);
+  assert.equal(healed.warmth, Math.ceil(effectiveHealing / 3));
   const expected = attackPreview(healed, 'slash');
   const attacked = transition(healed, { type: 'play', index: 0 });
   assert.equal(100 - attacked.enemy.hp, expected);
@@ -133,7 +156,19 @@ test('热可可在残血时也能治疗并为下一张攻击保留暖意', () =>
   const next = transition(state, { type: 'play', index: 0 });
   const expectedHealing = card('leech').heal;
   assert.equal(next.hp, state.hp + expectedHealing);
-  assert.equal(next.warmth, Math.ceil(expectedHealing / 2));
+  assert.equal(next.warmth, Math.ceil(expectedHealing / 3));
+});
+
+test('该该的暖意可以超过六层并在下一张攻击时全部释放', () => {
+  const state = transition(leaveHub(newRun(84, 'manual', 'standard', 'gaigai')), { type: 'node', id: 'c0r0n0' });
+  state.hp = state.maxHp; state.warmth = 6;
+  state.hand = ['mend', 'slash']; state.energy = 3; state.enemy.hp = 100; state.enemy.maxHp = 100;
+  const stored = transition(state, { type: 'play', index: 0 });
+  assert.equal(stored.warmth, 10);
+  const expected = attackPreview(stored, 'slash');
+  const attacked = transition(stored, { type: 'play', index: 0 });
+  assert.equal(attacked.warmth, 0);
+  assert.equal(100 - attacked.enemy.hp, expected);
 });
 
 test('我在这里、热可可和蜂蜜牛奶的一级基础收益一致', () => {
@@ -182,6 +217,78 @@ test('每章提供八种非首领遭遇，首领保持独立', () => {
   assert.equal(enemyFor(state).name, ENEMIES[0].name);
 });
 
+test('第一章普通与精英使用独立敌人池且机制清晰区分', () => {
+  const chapter = ENCOUNTERS[0];
+  const normal = chapter.filter(enemy => !enemy.eliteOnly);
+  const elites = chapter.filter(enemy => enemy.eliteOnly);
+  assert.equal(normal.length, 6);
+  assert.deepEqual(elites.map(enemy => enemy.name), ['余温茶杯', '缠结线团']);
+  assert.deepEqual(elites[0].pattern, [
+    { kind: 'attack', value: 7 },
+    { kind: 'guard', value: 8 },
+    { kind: 'heal', value: 5 },
+  ]);
+  assert.deepEqual(elites[1].pattern, [
+    { kind: 'attack', value: 4, hits: 2 },
+    { kind: 'jam', value: 1 },
+    { kind: 'guard', value: 7 },
+  ]);
+  const mechanics = new Set(normal.flatMap(enemy => enemy.pattern.map(move => move.hits ? 'multi' : move.kind)));
+  for (const mechanic of ['charge', 'guard', 'multi', 'dispel', 'heal', 'curse']) assert.ok(mechanics.has(mechanic), mechanic);
+  assert.ok(Math.min(...elites.map(enemy => enemy.hp * 1.5)) > Math.max(...normal.map(enemy => enemy.hp)));
+});
+
+test('第一章精英护盾保留回合成长且茶杯基础治疗为五点', () => {
+  const state = enterBattle(243);
+  state.stage = 0;
+  state.elite = true;
+  state.foe = 6;
+  state.turn = 2;
+  state.mapRow = 0;
+  const earlyGuard = intent(state);
+  state.turn = 5;
+  const lateGuard = intent(state);
+  assert.equal(ENCOUNTERS[0][6].pattern[2].value, 5);
+  assert.equal(earlyGuard.kind, 'guard');
+  assert.equal(lateGuard.kind, 'guard');
+  assert.ok(lateGuard.value > earlyGuard.value);
+});
+
+test('第一章地图节点不会让普通与精英模板串池', () => {
+  for (let seed = 1; seed <= 12; seed++) {
+    const nodes = buildChapterMap(0, seed);
+    for (const target of nodes.filter(node => ['battle', 'elite'].includes(node.type) && node.row > 0)) {
+      const parent = nodes.find(node => node.links.includes(target.id));
+      const state = leaveHub(newRun(seed, 'manual'));
+      state.mapRow = parent.row; state.currentNode = parent.id; state.visited = [parent.id];
+      const battle = transition(state, { type: 'node', id: target.id });
+      assert.equal(Boolean(enemyFor(battle).eliteOnly), target.type === 'elite', target.id);
+    }
+  }
+});
+
+test('恢复型敌人会按预告恢复生命但不会超过上限', () => {
+  const state = enterBattle(241);
+  state.foe = 4; state.turn = 2; state.hand = [];
+  state.enemy.maxHp = 100; state.enemy.hp = 90;
+  const next = transition(state, { type: 'end' });
+  assert.ok(next.enemy.hp > state.enemy.hp);
+  assert.ok(next.enemy.hp <= next.enemy.maxHp);
+  assert.ok(next.battleLog.some(line => line.includes('恢复')));
+});
+
+test('蓄力型敌人会在释放重击后清空蓄力并重新预告', () => {
+  const state = enterBattle(242);
+  state.foe = 0; state.hand = [];
+  const charged = transition(state, { type: 'end' });
+  assert.ok(charged.enemy.charge > 0);
+  const released = transition(charged, { type: 'end' });
+  assert.equal(released.enemy.charge, 0);
+  assert.ok(released.hp < charged.hp);
+  const chargingAgain = transition(released, { type: 'end' });
+  assert.ok(chargingAgain.enemy.charge > 0);
+});
+
 test('装备会真实改变攻击与回合格挡', () => {
   let state = newRun(29, 'manual');
   assert.equal(equipmentStats(state).attack, 1);
@@ -200,17 +307,53 @@ test('普通怪技能装备掉率逐章开放且精英怪不受衰减', () => {
   assert.equal(equipmentSkillDropScale(5, true), 1);
 });
 
-test('胜利获得经验、升级并掉落装备', () => {
+test('普通、精英与 Boss 使用独立且可核对的装备品质概率', () => {
+  const closeTo = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} != ${expected}`);
+  const check = (actual, expected) => Object.keys(expected).forEach(key => closeTo(actual[key], expected[key]));
+  const normal = newRun(301); normal.stage = 0;
+  check(equipmentRarityChances(normal), { normal: .52, fine: .36, rare: .12, legendary: 0 });
+  const elite = structuredClone(normal); elite.elite = true;
+  check(equipmentRarityChances(elite), { normal: .42, fine: .36, rare: .18, legendary: .04 });
+  const boss = structuredClone(normal); boss.bossFight = true;
+  check(equipmentRarityChances(boss), { normal: .36, fine: .36, rare: .18, legendary: .1 });
+  boss.stage = 5;
+  const lateBoss = equipmentRarityChances(boss);
+  assert.ok(Math.abs(lateBoss.normal - .285) < 1e-9);
+  assert.ok(Math.abs(lateBoss.legendary - .175) < 1e-9);
+  assert.equal(Object.values(lateBoss).reduce((sum, chance) => sum + chance, 0), 1);
+});
+
+test('随机装备技能不再由稀有和传奇品质高概率保送', () => {
+  assert.equal(equipmentRandomSkillChance('普通'), 0);
+  assert.equal(equipmentRandomSkillChance('精良'), 0);
+  assert.equal(equipmentRandomSkillChance('稀有'), .2);
+  assert.equal(equipmentRandomSkillChance('传奇'), .6);
+});
+
+test('底材自带技能不会被早期精英和 Boss 保送', () => {
+  const normal = newRun(302); normal.stage = 0;
+  assert.equal(equipmentInnateSkillChance(normal), .15);
+  const elite = structuredClone(normal); elite.elite = true;
+  assert.equal(equipmentInnateSkillChance(elite), .3);
+  const boss = structuredClone(normal); boss.bossFight = true;
+  assert.equal(equipmentInnateSkillChance(boss), .4);
+  normal.stage = 5;
+  assert.equal(equipmentInnateSkillChance(normal), 1);
+});
+
+test('胜利获得经验、升级并按 0 至 3 件规则掉落装备', () => {
   const state = enterBattle(31);
   state.xp = 44;
   state.hand = ['slash']; state.energy = 3; state.enemy.hp = 1;
   const reward = transition(state, { type: 'play', index: 0 });
   assert.equal(reward.level, 2);
   assert.equal(reward.maxHp, 76);
-  assert.ok(reward.lastLoot);
-  assert.ok(CHAPTER_LOOT[0].includes(itemFor(reward, reward.lastLoot).base));
-  assert.ok(['weapon', 'armor', 'bag', 'scarf', 'charm', 'decor'].includes(ITEMS[itemFor(reward, reward.lastLoot).base].slot));
-  assert.ok(reward.journeyNewItems.includes(reward.lastLoot));
+  assert.ok(reward.lastLoots.length >= 0 && reward.lastLoots.length <= 3);
+  for (const id of reward.lastLoots) {
+    assert.ok(CHAPTER_LOOT[0].includes(itemFor(reward, id).base));
+    assert.ok(['weapon', 'armor', 'bag', 'scarf', 'charm', 'decor'].includes(ITEMS[itemFor(reward, id).base].slot));
+    assert.ok(reward.journeyNewItems.includes(id));
+  }
 });
 
 test('本次探索获得的装备和技能会标记为新内容，并在下一次启程时清空', () => {
@@ -276,23 +419,26 @@ test('章节深度决定掉落等级，工坊可以把珍贵低阶装备升入�
   assert.ok(late.inventory[0].itemLevel >= 59);
 });
 
-test('结算奖励只新增技能牌且优先提供未拥有技能，章节逐步开放技能池', () => {
+test('结算奖励只把独立技能牌收入候补，且章节逐步开放技能池', () => {
   let state = newRun(915, 'manual');
   state.phase = 'reward'; state.enemy.hp = 0; state.choices = ['riposte', 'leech', 'quick'];
-  const initialCount = state.deck.length;
+  const initialDeckCount = state.deck.length;
+  const initialLibraryCount = state.cardLibrary.length;
   const first = transition(state, { type: 'reward', key: 'riposte' });
-  assert.equal(first.deck.length, initialCount + 1);
-  assert.equal(card(first.deck.at(-1)).rank, skillRewardRank(state, 'riposte'));
+  assert.equal(first.deck.length, initialDeckCount);
+  assert.equal(first.cardLibrary.length, initialLibraryCount + 1);
+  assert.equal(card(first.cardLibrary.at(-1)).rank, skillRewardRank(state, 'riposte'));
   first.phase = 'reward'; first.enemy.hp = 0; first.choices = ['riposte', 'leech', 'quick'];
   const second = transition(first, { type: 'reward', key: 'riposte' });
-  assert.equal(second.deck.length, initialCount + 2);
-  assert.equal(second.deck.filter(key => card(key).baseKey === 'riposte').length, 2);
+  assert.equal(second.deck.length, initialDeckCount);
+  assert.equal(second.cardLibrary.length, initialLibraryCount + 2);
+  assert.equal(second.cardLibrary.filter(key => card(key).baseKey === 'riposte').length, 2);
 
   let late = newRun(916, 'manual');
   late.stage = 5; late.phase = 'combat'; late.enemy = { hp: 1, maxHp: 1, block: 0, mark: 0 }; late.hand = ['slash']; late.energy = 3;
   late = transition(late, { type: 'play', index: 0 });
-  assert.ok(late.choices.every(key => ['mark', 'riposte', 'leech', 'quick', 'fortify', 'nova', 'tea', 'listen', 'nightRide', 'echo', 'postcard', 'photoAlbum', 'unsent', 'risk', 'kitchenLight', 'stayAwhile', 'lucidDoor', 'mend', 'blanket', 'morningCall', 'goodnight'].includes(key)));
-  assert.ok(late.choices.some(key => !new Set(late.deck.map(key => card(key).baseKey)).has(key)));
+  assert.ok(late.choices.every(key => REWARDS.includes(key)));
+  assert.ok(late.choices.some(key => !new Set(late.cardLibrary.map(key => card(key).baseKey)).has(key)));
 });
 
 test('三名角色的核心牌均在连续两次未出现后保底', () => {
@@ -327,28 +473,80 @@ test('卡组按类型和同名牌分组，同名高等级排在前面', () => {
   assert.ok(sorted.indexOf('mark') < sorted.indexOf('guard+3'));
 });
 
-test('技能掉落等级按章节基础和章内路段统一递进', () => {
-  const keys = ['riposte', 'leech', 'quick', 'fortify', 'nova', 'tea', 'listen', 'nightRide'];
-  const segmentOffsets = [[0, 0], [0, 1], [0, 2], [1, 2], [1, 2]];
-  for (let stage = 0; stage < 6; stage++) {
-    const baseRank = stage + 1;
-    for (let segment = 0; segment < 5; segment++) {
-      const state = newRun(930 + stage, 'manual');
-      state.stage = stage; state.mapRow = segment * 10 + 2;
-      for (const key of keys) {
-        const rank = skillRewardRank(state, key);
-        assert.ok(rank >= baseRank + segmentOffsets[segment][0]);
-        assert.ok(rank <= baseRank + segmentOffsets[segment][1]);
-        assert.equal(skillRewardRank(state, key), rank);
-      }
+test('技能掉落等级只由新旧章节与普通、精英、Boss 决定', () => {
+  for (const key of REWARDS) {
+    const origin = SKILL_UNLOCKS[key];
+    for (let stage = origin; stage < 6; stage++) {
+      const normal = newRun(930 + stage, 'manual'); normal.stage = stage;
+      const expected = Math.min(10, 1 + (stage - origin) * 2);
+      normal.mapRow = 1;
+      assert.equal(skillRewardRank(normal, key), expected);
+      normal.mapRow = 47;
+      assert.equal(skillRewardRank(normal, key), expected);
+      const elite = structuredClone(normal); elite.elite = true;
+      assert.equal(skillRewardRank(elite, key), Math.min(10, expected + 1));
+      const boss = structuredClone(normal); boss.bossFight = true;
+      assert.equal(skillRewardRank(boss, key), Math.min(10, expected + 2));
     }
   }
-  const opening = newRun(940, 'manual');
-  opening.stage = 0; opening.mapRow = 0; opening.elite = true;
-  assert.ok(keys.every(key => skillRewardRank(opening, key) === 1));
-  const boss = newRun(941, 'manual');
-  boss.stage = 5; boss.mapRow = 49; boss.bossFight = true;
-  assert.ok(keys.every(key => skillRewardRank(boss, key) === 8));
+  for (let chapter = 0; chapter < 6; chapter++) assert.ok(REWARDS.filter(key => SKILL_UNLOCKS[key] === chapter).length >= 6);
+});
+
+test('新增结构化卡牌效果的预计值与实际结算一致', () => {
+  const state = enterBattle(942);
+  state.enemy = { hp: 500, maxHp: 500, block: 0, mark: 4, charge: 0 };
+  state.block = 20; state.energy = 9;
+  for (const key of ['tideTurn', 'exposeTruth', 'silentAnswer']) {
+    const current = structuredClone(state);
+    current.hand = [key];
+    const expected = attackPreview(current, key);
+    const played = transition(current, { type: 'play', index: 0 });
+    assert.equal(current.enemy.hp - played.enemy.hp, expected, key);
+  }
+});
+
+test('回收牌只取回手牌空位数量且不会让其余弃牌消失', () => {
+  const state = enterBattle(829);
+  state.hand = ['returnedLetter', ...Array(8).fill('guard')];
+  state.discard = ['slash', 'mark'];
+  state.energy = 3;
+  const next = transition(state, { type: 'play', index: 0 });
+  assert.equal(next.hand.length, 9);
+  assert.ok(next.hand.includes('mark'));
+  assert.ok(next.discard.includes('slash'));
+  assert.ok(next.discard.includes('returnedLetter'));
+  assert.ok(next.battleLog.some(line => line.includes('取回 1 张弃牌')));
+});
+
+test('后期敌人意图依次提供蓄力、驱散、治疗压制与牌堆干扰', () => {
+  const state = enterBattle(943);
+  state.stage = 5; state.enemy.charge = 0;
+  state.turn = 4;
+  assert.equal(intent(state).kind, 'charge');
+  state.enemy.charge = 33;
+  assert.deepEqual(intent(state), { kind: 'chargedAttack', value: 33 });
+  state.enemy.charge = 0; state.turn = 2;
+  assert.equal(intent(state).kind, 'dispel');
+  state.turn = 3;
+  assert.equal(intent(state).kind, 'suppress');
+  state.turn = 5;
+  assert.equal(intent(state).kind, 'jam');
+});
+
+test('装备掉落数量符合普通、精英与 Boss 的层级范围', () => {
+  const average = flags => {
+    const state = newRun(944);
+    Object.assign(state, flags);
+    let total = 0;
+    for (let index = 0; index < 10000; index++) total += equipmentDropCount(state);
+    return total / 10000;
+  };
+  const normal = average({ elite: false, bossFight: false });
+  const elite = average({ elite: true, bossFight: false });
+  const boss = average({ elite: false, bossFight: true });
+  assert.ok(normal > .7 && normal < .86);
+  assert.ok(elite > 1.7 && elite < 1.9);
+  assert.ok(boss > 2.5 && boss < 2.7);
 });
 
 test('满级技能与初级技能形成明显数值代差', () => {
@@ -394,16 +592,14 @@ test('首次战斗会显示一次简明教学，确认后不再阻塞自动战�
   assert.deepEqual(transition(ready, { type: 'tutorialDone' }), ready);
 });
 
-test('同一地区可以反复掉落独立装备，装备技能会加入战斗牌组', () => {
+test('同一地区可以掉落零到多件独立装备，装备技能会加入战斗牌组', () => {
   let state = enterBattle(310);
   state.hand = ['slash']; state.energy = 3; state.enemy.hp = 1;
   state = transition(state, { type: 'play', index: 0 });
-  const firstId = state.lastLoot;
   const firstCount = state.inventory.length;
   state.phase = 'combat'; state.enemy.hp = 1; state.enemy.maxHp = 10; state.hand = ['slash']; state.energy = 3;
   state = transition(state, { type: 'play', index: 0 });
-  assert.equal(state.inventory.length, firstCount + 1);
-  assert.notEqual(state.lastLoot, firstId);
+  assert.ok(state.inventory.length >= firstCount && state.inventory.length <= firstCount + 3);
 
   const skillItem = state.inventory[0];
   skillItem.skill = 'mend'; skillItem.skillLevel = 4;
@@ -480,8 +676,8 @@ test('普通战斗后继续本章路线，不会提前跳章', () => {
   assert.equal(reward.choices.length, 3);
   const map = transition(reward, { type: 'reward', key: reward.choices[0] });
   assert.equal(map.phase, 'map');
-  assert.ok(map.deck.some(key => card(key).baseKey === reward.choices[0]));
-  assert.ok(map.deck.length >= 10 && map.deck.length <= 11);
+  assert.ok(map.cardLibrary.some(key => card(key).baseKey === reward.choices[0]));
+  assert.equal(map.deck.length, 10);
   assert.equal(map.stage, 0);
   const nodes = buildChapterMap(0, map.mapSeed);
   const current = nodes.find(node => node.id === map.currentNode);
@@ -565,7 +761,8 @@ test('返回房车会恢复全部生命，再次启程保持满血', () => {
 });
 
 test('未知站点结果来自完整随机池，揭晓后可以重置', () => {
-  assert.deepEqual(new Set(MYSTERY_STATIONS.map(station => station.type)), new Set(['event', 'camp', 'memory', 'forget', 'negative']));
+  assert.deepEqual(new Set(MYSTERY_STATIONS.map(station => station.type)), new Set(['event', 'camp', 'memory', 'loadout', 'negative']));
+  assert.deepEqual(Object.fromEntries(MYSTERY_STATIONS.map(station => [station.type, station.weight])), { event: 24, camp: 20, memory: 40, loadout: 6, negative: 10 });
   let state = leaveHub(newRun(2205));
   const nodes = buildChapterMap(0, state.mapSeed);
   const mystery = nodes.find(node => node.type === 'mystery');
@@ -584,13 +781,38 @@ test('未知站点结果来自完整随机池，揭晓后可以重置', () => {
   assert.equal(state.mysteryResult, null);
 });
 
-test('遗忘回忆站可以不遗忘卡牌并继续赶路', () => {
+test('牌组整备站可以调整出战与候补并继续赶路', () => {
   const state = leaveHub(newRun(2205, 'manual', 'standard'));
-  state.phase = 'forget';
-  const originalDeck = [...state.deck];
-  const continued = transition(state, { type: 'forget', index: null });
+  state.phase = 'loadout';
+  state.cardLibrary.push('riposte');
+  const activated = transition(state, { type: 'loadout', operation: 'activate', key: 'riposte' });
+  assert.equal(activated.deck.length, 11);
+  const benched = transition(activated, { type: 'loadout', operation: 'bench', key: 'riposte' });
+  assert.equal(benched.deck.length, 10);
+  assert.equal(transition(benched, { type: 'loadout', operation: 'bench', key: 'slash' }), benched);
+  const continued = transition(benched, { type: 'leaveLoadout' });
   assert.equal(continued.phase, 'map');
-  assert.deepEqual(continued.deck, originalDeck);
+});
+
+test('房车可以永久丢弃候补卡，但不能让出战牌组低于十张', () => {
+  const state = newRun(2207, 'manual', 'standard');
+  const initialSlashCount = state.cardLibrary.filter(key => key === 'slash').length;
+  state.cardLibrary.push('slash');
+  const discardedBench = transition(state, { type: 'loadout', operation: 'discard', key: 'slash' });
+  assert.equal(discardedBench.cardLibrary.filter(key => key === 'slash').length, initialSlashCount);
+  assert.equal(discardedBench.deck.length, 10);
+  assert.equal(transition(discardedBench, { type: 'loadout', operation: 'discard', key: 'slash' }), discardedBench);
+  const expanded = structuredClone(discardedBench);
+  expanded.cardLibrary.push('finalPlatform'); expanded.deck.push('finalPlatform');
+  const discardedActive = transition(expanded, { type: 'loadout', operation: 'discard', key: 'finalPlatform' });
+  assert.equal(discardedActive.deck.length, 10);
+  assert.ok(!discardedActive.cardLibrary.includes('finalPlatform'));
+});
+
+test('旅途中的整备站不能永久丢弃卡牌', () => {
+  const state = leaveHub(newRun(2208, 'manual', 'standard'));
+  state.phase = 'loadout'; state.cardLibrary.push('riposte');
+  assert.equal(transition(state, { type: 'loadout', operation: 'discard', key: 'riposte' }), state);
 });
 
 test('魔法屋冷却期间问号节点可以经过但不会再次抽取', () => {
@@ -607,14 +829,15 @@ test('魔法屋冷却期间问号节点可以经过但不会再次抽取', () =>
   assert.match(state.log[0], /再走 9 步/);
 });
 
-test('路标返回房车不会遗失未装备物品', () => {
+test('路标返回房车不会遗失未装备物品并恢复全部生命', () => {
   const state = leaveHub(newRun(131));
   const storedItem = { id: 'gear-3', base: 'gardenLedger', rarity: '普通', affixes: [], skill: null };
   state.inventory.push(storedItem); state.unsecuredLoot = [storedItem.id];
-  state.mapRow = 9; state.checkpointRow = 9; state.currentNode = 'c0r9checkpoint'; state.visited = [state.currentNode];
+  state.mapRow = 9; state.checkpointRow = 9; state.currentNode = 'c0r9checkpoint'; state.visited = [state.currentNode]; state.hp = 23;
   const returned = transition(state, { type: 'returnHub' });
   assert.ok(itemFor(returned, storedItem.id));
   assert.deepEqual(returned.unsecuredLoot, []);
+  assert.equal(returned.hp, returned.maxHp);
 });
 
 test('激活路标后可从房车传送回来且下一步固定进入战斗', () => {
@@ -703,7 +926,7 @@ test('隐藏测试面板操作不会破坏存档并可跳转路标', () => {
   assert.equal(state.gold, 1000);
   assert.equal(state.level, 2);
   assert.ok(state.inventory.some(item => item.base === 'morningShears' && item.itemLevel === 47));
-  assert.ok(state.deck.some(key => card(key).baseKey === 'mend' && card(key).rank >= 7));
+  assert.ok(state.cardLibrary.some(key => card(key).baseKey === 'mend' && card(key).rank >= 7));
   assert.ok(state.deck.every(key => card(key).rank > 1));
   assert.equal(state.phase, 'map');
   assert.equal(state.stage, 3);
@@ -747,20 +970,31 @@ test('所有难度均按卡面治疗，标准和挑战难度由护盾穿透提�
   assert.ok(transition(challenge, { type: 'end' }).hp < challenge.hp);
 });
 
-test('暖灯休息站可恢复继续，打包热饮返回房车并回满生命', () => {
+test('暖灯休息站可回满后继续或无额外收益地返回房车', () => {
   const state = leaveHub(newRun(36, 'manual'));
   state.mapRow = 8; state.currentNode = 'c0r8n1'; state.visited = [state.currentNode]; state.hp = 20;
   const checkpoint = transition(state, { type: 'node', id: 'c0r9checkpoint' });
   assert.equal(checkpoint.phase, 'checkpoint');
   const rested = transition(checkpoint, { type: 'checkpoint', choice: 'rest' });
   assert.equal(rested.phase, 'map');
-  assert.ok(rested.hp > checkpoint.hp);
+  assert.equal(rested.hp, rested.maxHp);
 
-  const packed = transition(checkpoint, { type: 'checkpoint', choice: 'hotDrink' });
-  assert.equal(packed.phase, 'hub');
-  assert.equal(packed.hotDrinkBattles, 3);
-  assert.equal(packed.chapterCheckpoints[0], 9);
-  assert.equal(packed.hp, packed.maxHp);
+  const returned = transition(checkpoint, { type: 'checkpoint', choice: 'returnHub' });
+  assert.equal(returned.phase, 'hub');
+  assert.equal(returned.chapterCheckpoints[0], 9);
+  assert.equal(returned.hp, returned.maxHp);
+});
+
+test('战斗结算可以只放弃选牌并保留装备奖励', () => {
+  const state = enterBattle(364);
+  state.hand = ['slash']; state.energy = 3; state.enemy.hp = 1;
+  const reward = transition(state, { type: 'play', index: 0 });
+  const librarySize = reward.cardLibrary.length;
+  const inventorySize = reward.inventory.length;
+  const continued = transition(reward, { type: 'reward', key: null });
+  assert.equal(continued.phase, 'map');
+  assert.equal(continued.cardLibrary.length, librarySize);
+  assert.equal(continued.inventory.length, inventorySize);
 });
 
 test('整理回忆站用两张同名同等级技能合成一张高一级技能', () => {
@@ -770,6 +1004,7 @@ test('整理回忆站用两张同名同等级技能合成一张高一级技能',
   state.mapRow = 5;
   state.stepsTraveled = 6;
   state.deck = ['slash', 'slash', 'slash+2', 'slash+2', 'guard'];
+  state.cardLibrary = [...state.deck];
   state.unsecuredCards = ['slash', 'slash'];
   state.journeyCardDrops = ['slash', 'slash'];
   const merged = transition(state, { type: 'memory', cardKey: 'slash' });
@@ -777,47 +1012,41 @@ test('整理回忆站用两张同名同等级技能合成一张高一级技能',
   assert.equal(merged.deck.length, 4);
   assert.equal(merged.deck.filter(key => key === 'slash').length, 0);
   assert.equal(merged.deck.filter(key => key === 'slash+2').length, 3);
+  assert.equal(merged.cardLibrary.filter(key => key === 'slash+2').length, 3);
   assert.deepEqual(merged.unsecuredCards, ['slash+2']);
   assert.deepEqual(merged.journeyCardDrops, ['slash+2']);
 
   const mismatched = structuredClone(state);
   mismatched.phase = 'memory';
   mismatched.deck = ['slash', 'slash+2', 'guard'];
+  mismatched.cardLibrary = [...mismatched.deck];
   assert.equal(transition(mismatched, { type: 'memory', cardKey: 'slash' }), mismatched);
 
   const capped = structuredClone(state);
   capped.phase = 'memory';
   capped.deck = ['slash+10', 'slash+10'];
+  capped.cardLibrary = [...capped.deck];
   assert.equal(transition(capped, { type: 'memory', cardKey: 'slash+10' }), capped);
 });
 
-test('四个里程碑拥有不同功能和实际结算', () => {
+test('四个里程碑都可选择回满继续或回满返回房车', () => {
   assert.deepEqual(Object.keys(CHECKPOINTS).map(Number), [10, 20, 30, 40]);
   assert.equal(new Set(Object.values(CHECKPOINTS).map(stop => stop.title)).size, 4);
 
-  const shop = leaveHub(newRun(360, 'manual'));
-  shop.phase = 'checkpoint'; shop.mapRow = 19; shop.hp = 40;
-  shop.inventory.push({ id: 'gear-3', base: 'emberCharm', itemLevel: 4, rarity: '普通', affixes: [], skill: null, skillLevel: 0 });
-  shop.nextItemId = 4;
-  const traded = transition(shop, { type: 'checkpoint', choice: 'tradeGear' });
-  assert.equal(traded.phase, 'hub');
-  assert.equal(traded.inventory.find(item => item.id === 'gear-3').rarity, '精良');
+  const restChoices = ['rest', 'shortRest', 'cinemaRest', 'deepRest'];
+  for (const [index, step] of CHECKPOINT_STEPS.entries()) {
+    const base = leaveHub(newRun(360 + index, 'manual'));
+    base.phase = 'checkpoint'; base.mapRow = step - 1; base.hp = 20;
+    const rested = transition(base, { type: 'checkpoint', choice: restChoices[index] });
+    assert.equal(rested.phase, 'map');
+    assert.equal(rested.hp, rested.maxHp);
 
-  const cinema = leaveHub(newRun(361, 'manual'));
-  cinema.phase = 'checkpoint'; cinema.mapRow = 29; cinema.hp = 20;
-  const cinemaRest = transition(cinema, { type: 'checkpoint', choice: 'cinemaRest' });
-  assert.equal(cinemaRest.phase, 'map');
-  assert.ok(cinemaRest.hp > cinema.hp);
-  const upgraded = transition(cinema, { type: 'checkpoint', choice: 'upgradeLowestCard' });
-  assert.equal(upgraded.phase, 'hub');
-  assert.equal(upgraded.deck.length, cinema.deck.length);
-  assert.ok(upgraded.deck.some(key => key === 'slash+2'));
-
-  const finale = leaveHub(newRun(362, 'manual'));
-  finale.phase = 'checkpoint'; finale.mapRow = 39;
-  const prepared = transition(finale, { type: 'checkpoint', choice: 'emergencyLight' });
-  assert.equal(prepared.phase, 'hub');
-  assert.equal(prepared.emergencyLight, true);
+    const returned = transition(base, { type: 'checkpoint', choice: 'returnHub' });
+    assert.equal(returned.phase, 'hub');
+    assert.equal(returned.hp, returned.maxHp);
+    assert.deepEqual(returned.inventory, base.inventory);
+    assert.deepEqual(returned.cardLibrary, base.cardLibrary);
+  }
 });
 
 test('战败后本局结束，不能从路标直接复活', () => {
@@ -838,7 +1067,7 @@ test('击败区域 Boss 后返回房车并解锁下一站', () => {
   assert.equal(boss.bossFight, true);
   boss.enemy.hp = 1; boss.hand = ['slash']; boss.energy = 3;
   const reward = transition(boss, { type: 'play', index: 0 });
-  const hub = transition(reward, { type: 'reward', key: null });
+  const hub = transition(reward, { type: 'reward', key: reward.choices[0] });
   assert.equal(hub.phase, 'hub');
   assert.equal(hub.unlocked, 1);
   assert.equal(hub.stage, 1);
@@ -856,7 +1085,7 @@ test('已通关区域可以反复探索并累计次数', () => {
     state = transition(state, { type: 'node', id: 'c0boss' });
     state.enemy.hp = 1; state.hand = ['slash']; state.energy = 3;
     state = transition(state, { type: 'play', index: 0 });
-    state = transition(state, { type: 'reward', key: null });
+    state = transition(state, { type: 'reward', key: state.choices[0] });
   }
   assert.equal(state.phase, 'hub');
   assert.equal(state.clears[0], 2);
@@ -870,41 +1099,10 @@ test('存档可恢复，异常存档会被拒绝', () => {
   const oldState = structuredClone(state);
   oldState.version = 8;
   delete oldState.guestRewards;
-  assert.deepEqual(restore(serialize(oldState)).guestRewards, [false, false, false, false, false, false]);
+  assert.equal(restore(serialize(oldState)), null);
   const deepState = leaveHub(newRun(171));
   deepState.mapRow = 19; deepState.currentNode = 'c0r19checkpoint'; deepState.visited = ['c0r9checkpoint', 'c0r19checkpoint'];
   assert.deepEqual(restore(serialize(deepState)), deepState);
-  const versionNine = structuredClone(deepState);
-  versionNine.version = 9; versionNine.currentNode = 'c0r19n1'; versionNine.visited = ['c0r9n0', 'c0r19n1'];
-  assert.equal(restore(serialize(versionNine)).currentNode, 'c0r19checkpoint');
-  const threeSlotSave = structuredClone(state);
-  threeSlotSave.version = 18;
-  threeSlotSave.equipment = { weapon: 'gear-1', armor: 'gear-2', charm: null };
-  assert.deepEqual(Object.keys(restore(serialize(threeSlotSave)).equipment), ['weapon', 'armor', 'bag', 'scarf', 'charm', 'decor']);
-  const versionTwentyOne = structuredClone(state);
-  versionTwentyOne.version = 21; delete versionTwentyOne.unsecuredLoot;
-  assert.deepEqual(restore(serialize(versionTwentyOne)).unsecuredLoot, []);
-  const versionTwentyTwo = structuredClone(state);
-  versionTwentyTwo.version = 22; versionTwentyTwo.stage = 2; versionTwentyTwo.checkpointRow = 19; delete versionTwentyTwo.chapterCheckpoints;
-  assert.equal(restore(serialize(versionTwentyTwo)).chapterCheckpoints[2], 19);
-  const versionTwentyThree = structuredClone(state);
-  versionTwentyThree.version = 23;
-  for (const item of versionTwentyThree.inventory) { delete item.itemLevel; delete item.skillLevel; }
-  const migratedProgression = restore(serialize(versionTwentyThree));
-  assert.ok(migratedProgression.inventory.every(item => item.itemLevel >= 1 && item.skillLevel === 0));
-  const versionTwentyFour = structuredClone(state);
-  versionTwentyFour.version = 24; delete versionTwentyFour.journeyNewItems; delete versionTwentyFour.journeyNewCards;
-  const migratedNewLabels = restore(serialize(versionTwentyFour));
-  assert.deepEqual(migratedNewLabels.journeyNewItems, []);
-  assert.deepEqual(migratedNewLabels.journeyNewCards, []);
-  const versionTwentySix = structuredClone(state);
-  versionTwentySix.version = 26; delete versionTwentySix.unsecuredCards; delete versionTwentySix.journeyCardDrops;
-  const migratedJourneyCards = restore(serialize(versionTwentySix));
-  assert.deepEqual(migratedJourneyCards.unsecuredCards, []);
-  assert.deepEqual(migratedJourneyCards.journeyCardDrops, []);
-  const versionTwentySeven = structuredClone(state);
-  versionTwentySeven.version = 27; delete versionTwentySeven.coreRewardMisses;
-  assert.equal(restore(serialize(versionTwentySeven)).coreRewardMisses, 0);
   assert.equal(restore('{"version":999}'), null);
   assert.equal(restore('not-json'), null);
 });
