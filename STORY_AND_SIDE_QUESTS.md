@@ -208,6 +208,25 @@
 - `promise_trade`：未来交易。
 - `promise_debt`：先拿收益，之后偿还温和代价。
 - `promise_story`：推进主线线索或客人故事。
+- `promise_turnin_cards`：未来消耗多张技能牌，换更高等级卡牌、定向升级或特殊奖励。
+- `promise_turnin_gear`：未来消耗未装备物品，换高品质装备、隐藏商店或特殊祝福。
+- `promise_collection`：未来检查本段收获数量，鼓励玩家短期内多打怪、多走战斗节点。
+
+### 5.4 短期目标型支线
+
+这类支线的目的不是立刻给奖励，而是改变玩家接下来 5 至 12 步的路线选择。玩家第一次遇到时只会觉得“这个委托好像以后要用到东西”，第二次遇到时会主动调整策略，例如优先打怪、少进休息节点、尽量拿更多卡牌和装备。
+
+适合放在第 1 至第 3 章，让玩家较早意识到：夜路事件会改变本局目标。
+
+典型结构：
+
+- 前置：有人托付一个需要“喂养”“修补”“归还”“登记”的物件。
+- 中段：玩家继续探索，获得技能牌或装备。
+- 兑现：若干步后，系统检查玩家是否有足够材料。
+- 成功：消耗多张技能牌或未装备装备，获得明显更强的卡、装备或祝福。
+- 不足：物件没有长成，只给少量安慰奖励或无事发生，不惩罚玩家。
+
+这类支线可以暗示需要“让它听见更多梦”“给它找几件旧物”“带些故事回来”，但不直接写“需要 3 张技能牌”或“需要 2 件装备”。二周目玩家会记住具体条件，从而把刷怪变成短期目标。
 
 ## 6. 支线写法规则
 
@@ -625,3 +644,649 @@
 支线要让玩家感到：自己不是在选择奖励，而是在选择如何对待一件托付到手里的东西。奖励、商店、卡牌和 Buff 是这个选择后来长出来的结果。
 
 第一次游玩靠惊喜，第二次游玩靠记忆。只要支线不制造致命陷阱，就可以大胆保留神秘感，让玩家把“我记得这个故事后面会发生什么”变成策略的一部分。
+
+## 12. 具体落地方案
+
+本节描述后续真正改代码时怎么做。目标是第一版不要大改架构，先把“夜路承诺”的体验做出来：玩家在事件里做选择，系统记住承诺，经过若干步、战斗或路标后触发兑现剧情，再给奖励或商店机会。
+
+### 12.1 第一版范围
+
+第一版建议做 10 至 12 个完整支线，覆盖 6 个章节，并确保早期就能遇到能改变短期行为的事件。支线数量不能太少，否则玩家第二局很快摸清事件池，惊喜和记忆策略都会变薄。
+
+第一版事件池建议：
+
+- 第 1 章 `花田终点站`：`没拆封的礼物`、`旧花盆寄养处`。
+- 第 2 章 `终年下雨的城`：`没有发出的晚安`、`雨夜赊伞`。
+- 第 3 章 `云端旧书街`：`页边批注`、`闭馆借书证`。
+- 第 4 章 `没有影子的海岸`：`倒影存放柜`、`退潮后的瓶中信`。
+- 第 5 章 `午夜星光集市`：`摊主的盒子`、`愿望典当行`。
+- 第 6 章 `被遗忘的终点站`：`空白行李牌`、`登记簿背面`。
+
+其中至少 3 个应是“短期目标型支线”：玩家选择后不会马上拿到奖励，而是需要在接下来若干步内准备资源，例如多打怪拿卡、刷装备、攒旅币，最后用这些资源换更高回报。
+
+短期目标型支线第一版建议优先做：
+
+- `旧花盆寄养处`：若干步后消耗多张技能牌，换一张高等级成长牌。
+- `闭馆借书证`：若干战斗后消耗重复技能牌，换一次定向升级或稀有书信牌。
+- `愿望典当行`：若干步后消耗未装备装备或旅币，换强力装备或隐藏祝福。
+
+第一版暂时不做复杂主线线索列表、不做图鉴、不做多结局，只在日志、事件弹窗和客人房间里埋线索。这样能最快验证“惊喜 + 二周目记忆”的玩法是否成立。
+
+### 12.2 数据放置
+
+在 `src/game.mjs` 增加一个支线定义常量，例如 `SIDE_STORIES`。它应该和 `CHAPTERS`、`GUESTS` 一样放在数据区，方便后续继续扩写。
+
+建议结构：
+
+```js
+export const SIDE_STORIES = {
+  vendorBox: {
+    name: '摊主的盒子',
+    chapters: [4],
+    minRow: 5,
+    oncePerRun: true,
+    intro: {
+      eyebrow: '夜路插曲',
+      title: '摊主的盒子',
+      text: '午夜摊主把一个小盒子放到房车门口。盒子不能见月光，也不能听见钟声。他说：“如果方便，替我保管到下一段路。”',
+      choices: [
+        { key: 'keep', title: '保管盒子' },
+        { key: 'decline', title: '婉拒摊主' },
+      ],
+    },
+    branches: {
+      keep: { promise: { type: 'shop', afterSteps: 8 } },
+      decline: { effect: { type: 'gold', value: 12 } },
+    },
+    resolve: {
+      title: '守信者的抽屉',
+      text: '摊主追上房车。盒子一路都没有醒。他向你道谢，并打开一只只卖给守信者的抽屉。',
+    },
+  },
+};
+```
+
+这里 `intro.choices` 不写数值奖励，只写动作。真正奖励放在 `branches` 和 `resolve` 里。
+
+短期目标型支线可以在 `promise` 中增加 `turnIn` 条件：
+
+```js
+branches: {
+  tend: {
+    promise: {
+      type: 'turnin_cards',
+      afterSteps: 7,
+      turnIn: { kind: 'cards', count: 3, minRank: 1, preferNew: true },
+      reward: { kind: 'card', key: 'mend', rankBonus: 2 },
+    },
+  },
+}
+```
+
+`turnIn` 条件只给系统使用，不在前置选择时展示给玩家。兑现时如果条件满足，应弹出“选择交出哪些回忆/旧物”的列表，由玩家手动选择材料；如果玩家拒绝或材料不足，就走温和错过文本。
+
+装备类可以写成：
+
+```js
+turnIn: { kind: 'gear', count: 2, unequippedOnly: true, preferLowScore: true }
+```
+
+实现时必须排除已装备物品，避免玩家在旅途中被事件拆掉关键装备。系统可以推荐低价值材料，但不能自动提交。
+
+### 12.3 存档字段
+
+在 `newRun()` 的初始状态中增加这些字段：
+
+```js
+sideStory: null,
+sidePromises: [],
+sideStorySeen: [],
+pendingScene: null,
+sideBuffs: [],
+namelessClues: [],
+```
+
+字段含义：
+
+- `sideStory`：当前正在展示的支线开场事件，例如 `{ id: 'vendorBox' }`。
+- `sidePromises`：已经选择、等待兑现的承诺列表。
+- `sideStorySeen`：本局已经触发过的支线 id，避免同局反复出现。
+- `pendingScene`：即将展示的兑现剧情或隐藏商店。
+- `sideBuffs`：支线给出的临时祝福。
+- `namelessClues`：无名旅客主线线索，第一版可以只记录不展示。
+
+承诺对象建议长这样：
+
+```js
+{
+  id: 'vendorBox',
+  branch: 'keep',
+  type: 'shop',
+  dueStep: 23,
+  createdStep: 15,
+  stage: 4,
+}
+```
+
+如果是按战斗次数兑现，可以用：
+
+```js
+{
+  id: 'warmDrink',
+  branch: 'save',
+  type: 'buff',
+  dueVictories: 18,
+  createdVictories: 15,
+  stage: 0,
+}
+```
+
+如果是路标兑现，可以用：
+
+```js
+{
+  id: 'giftBox',
+  branch: 'carry',
+  type: 'card',
+  dueCheckpoint: true,
+  createdRow: 12,
+  stage: 0,
+}
+```
+
+消耗材料型承诺：
+
+```js
+{
+  id: 'oldFlowerpot',
+  branch: 'tend',
+  type: 'turnin_cards',
+  dueStep: 14,
+  createdStep: 7,
+  stage: 0,
+  turnIn: { kind: 'cards', count: 3, minRank: 1, preferNew: true },
+  reward: { kind: 'card', key: 'mend', rankBonus: 2 },
+}
+```
+
+因为新增存档字段，后续实际实现时要提高 `VERSION`，并在 `restore()` 校验这些字段。当前项目未正式上线旧存档时，可以直接要求新版本字段存在，不一定要写复杂迁移。
+
+### 12.4 新增阶段
+
+第一版建议只新增两个 phase：
+
+- `sideStory`：展示支线开场，玩家做选择。
+- `sideResolve`：展示支线兑现剧情、隐藏商店或奖励确认。
+
+也可以复用现有 `event` 阶段，但不建议继续把所有事件都塞进 `event` 两个固定选项里。支线需要不同标题、正文和选项，单独 phase 会更清楚。
+
+`restore()` 的 phase 白名单要加入：
+
+```js
+'sideStory', 'sideResolve'
+```
+
+### 12.5 触发流程
+
+在玩家移动到地图节点后，也就是 `transition()` 处理 `action.type === 'node'` 时，现有流程会根据节点类型进入战斗、路标、命运魔法屋或沿途事件。
+
+支线触发可以插在普通 `event` 前：
+
+1. 玩家进入一个 `mystery`，抽中 `event`。
+2. 系统先判断是否触发支线。
+3. 如果触发，设置 `s.sideStory = { id }`，`s.phase = 'sideStory'`。
+4. 如果没有触发，继续进入现有 `event`。
+
+建议触发条件：
+
+- 当前节点 row >= 5。
+- 本局 `sideStorySeen.length < 2`。
+- 当前未兑现承诺 `sidePromises.length < 2`。
+- 当前章节有可用支线，且本局没见过。
+- 基础概率第一版可设为 35%，第 16、26、36 步后略提高。
+
+伪代码：
+
+```js
+function maybeStartSideStory(s) {
+  if ((s.sideStorySeen || []).length >= 2) return false;
+  if ((s.sidePromises || []).length >= 2) return false;
+  if ((s.mapRow || 0) < 5) return false;
+  const pool = Object.entries(SIDE_STORIES)
+    .filter(([id, story]) => !s.sideStorySeen.includes(id))
+    .filter(([, story]) => !story.chapters || story.chapters.includes(s.stage))
+    .filter(([, story]) => (story.minRow || 0) <= s.mapRow);
+  if (!pool.length) return false;
+  const chance = s.mapRow >= 35 ? .55 : s.mapRow >= 25 ? .48 : s.mapRow >= 15 ? .42 : .35;
+  if (random(s) >= chance) return false;
+  const [id] = pool[Math.floor(random(s) * pool.length)];
+  s.sideStory = { id };
+  s.sideStorySeen.push(id);
+  s.phase = 'sideStory';
+  log(s, `夜路上出现了新的插曲：「${SIDE_STORIES[id].name}」。`);
+  return true;
+}
+```
+
+### 12.6 选择流程
+
+新增 action：`sideStoryChoice`。
+
+玩家在 `sideStory` 页面点选项后，`transition()` 根据定义执行：
+
+1. 找到当前 `sideStory.id`。
+2. 找到选项对应 branch。
+3. 如果 branch 有即时效果，立刻结算。
+4. 如果 branch 有 promise，写入 `sidePromises`。
+5. 清空 `sideStory`，回到 `map`。
+
+伪代码：
+
+```js
+if (action.type === 'sideStoryChoice' && s.phase === 'sideStory') {
+  const story = SIDE_STORIES[s.sideStory?.id];
+  const branch = story?.branches?.[action.choice];
+  if (!story || !branch) return state;
+  if (branch.effect) applySideEffect(s, branch.effect, story);
+  if (branch.promise) addSidePromise(s, story, action.choice, branch.promise);
+  s.sideStory = null;
+  s.phase = 'map';
+  return s;
+}
+```
+
+即时效果也应走统一函数，例如：
+
+- `gold`：获得旅币。
+- `heal`：恢复生命。
+- `blockBuff`：接下来若干场战斗开局护盾。
+- `card`：获得一张卡。
+- `gear`：获得一件装备。
+
+第一版即时效果可以少做，只支持 `gold`、`heal`、`card`、`gear` 即可。
+
+### 12.7 兑现检查
+
+承诺兑现不应该只在一个地方检查，否则玩家可能错过触发。建议每次这些行为之后都检查一次：
+
+- 走到新节点后。
+- 战斗胜利后。
+- 到达路标后。
+- 从支线选择回到地图后。
+
+新增函数：
+
+```js
+function resolveDueSidePromises(s, trigger) {
+  const due = [];
+  const remaining = [];
+  for (const promise of s.sidePromises || []) {
+    const readyByStep = Number.isInteger(promise.dueStep) && s.stepsTraveled >= promise.dueStep;
+    const readyByVictory = Number.isInteger(promise.dueVictories) && s.victories >= promise.dueVictories;
+    const readyByCheckpoint = promise.dueCheckpoint && trigger === 'checkpoint';
+    const readyByBoss = promise.dueBoss && trigger === 'bossBefore';
+    if (readyByStep || readyByVictory || readyByCheckpoint || readyByBoss) due.push(promise);
+    else remaining.push(promise);
+  }
+  s.sidePromises = remaining;
+  if (!due.length) return false;
+  s.pendingScene = buildSideResolveScene(s, due[0]);
+  s.phase = 'sideResolve';
+  return true;
+}
+```
+
+第一版为了简单，每次只兑现一个承诺。如果同时到期多个，剩余的保留到下一次检查。
+
+### 12.8 兑现页面
+
+`sideResolve` 页面可以复用现有 `Overlay` 和 `CampChoice` 的样式，但内容来自 `pendingScene`。
+
+`pendingScene` 建议结构：
+
+```js
+{
+  kind: 'shop',
+  storyId: 'vendorBox',
+  title: '守信者的抽屉',
+  text: '摊主追上房车。盒子一路都没有醒。他向你道谢，并打开一只只卖给守信者的抽屉。',
+  goods: [
+    { id: 'vendor-gear', kind: 'gear', base: 'wishBox', cost: 60, label: '一只贴着星光封条的盒子' },
+    { id: 'vendor-card', kind: 'card', key: 'rewriteEnding', rank: 3, cost: 45, label: '一张折过两次的车票' },
+    { id: 'vendor-buff', kind: 'buff', buff: 'hotDrink', cost: 30, label: '一枚还温着的硬币' },
+  ],
+}
+```
+
+注意：商品 label 仍然不直接写数值。点击商品后如果旅币足够，再在日志里显示实际获得内容。
+
+对应 action：
+
+- `sideResolveClaim`：领取免费奖励或关闭普通兑现。
+- `sideShopBuy`：购买某个商品。
+- `sideResolveLeave`：离开商店或错过机会。
+
+金币不足时不要扣资源，日志写：
+
+```text
+摊主收回抽屉，说：“今晚先记在风里，下次有缘再见。”
+```
+
+### 12.9 消耗材料型兑现
+
+消耗材料型支线的重点是让玩家在短期内有明确但不明说的目标：多打几场战斗，多拿几张卡，多收几件装备，等事件回来时获得更好的选择。
+
+兑现时绝对不要自动吞材料，应弹出手动选择界面：
+
+- 标题仍然是剧情，例如 `旧花盆开花了`。
+- 正文呼应前文，例如 `花盆长出几片透明叶子，像是在等你把这一路听来的梦放进去。`
+- 列表展示可交出的技能牌或装备。
+- 玩家点选足够数量后，按钮显示动作，例如 `放进这些回忆`、`放进这些旧物`、`先把花盆收起来`。
+
+按钮可以不写精确奖励，但必须写清楚会交出玩家选中的东西，避免误触损失：
+
+```text
+放进选中的三段回忆
+```
+
+这比 `消耗 3 张技能牌，获得 Lv.4 蜂蜜牛奶` 更有故事感，同时玩家也知道这是一个交付行为。
+
+#### 技能牌消耗规则
+
+技能牌消耗必须保护基础体验：
+
+- 不能消耗装备自带技能，即带 `~gear` 的临时牌排除。
+- 可选列表优先展示本次探索获得的卡牌，也就是 `unsecuredCards` 中的卡。
+- 其次展示候补牌，避免玩家误伤出战卡组。
+- 出战牌可以展示，但要有明显的“出战中”角标；选择后如果会导致出战牌组低于 10 张，确认按钮禁用。
+- 唯一的本命核心牌默认不展示，例如该该的「蜂蜜牛奶」如果只有一张，应排除。
+- 玩家材料不足时不扣任何卡牌，只走错过或安慰奖励。
+
+建议实现一个统一候选函数，只负责列出可交材料，不负责自动消耗：
+
+```js
+function turnInCardCandidates(s, rule) {
+  return s.cardLibrary
+    .map((key, index) => ({ key, index, active: s.deck.includes(key), fresh: s.unsecuredCards.includes(key) }))
+    .filter(item => !item.key.endsWith('~gear'))
+    .filter(item => cardRank(item.key) >= (rule.minRank || 1))
+    .filter(item => !isProtectedCoreCard(s, item.key))
+    .sort((a, b) => Number(b.fresh) - Number(a.fresh) || Number(a.active) - Number(b.active) || cardRank(a.key) - cardRank(b.key));
+}
+```
+
+玩家提交时再校验 `selectedCardIndexes.length === rule.count`，并检查如果会消耗出战牌，消耗后 `s.deck.length >= 10`。校验失败则拒绝提交，不扣材料。
+
+#### 装备消耗规则
+
+装备消耗必须只处理未装备物品：
+
+- 已装备物品永远不能出现在可交列表中。
+- 可选列表优先展示本次探索获得但未装备的装备。
+- 其次展示评分较低的未装备装备。
+- 如果材料不足，不扣任何装备。
+- 消耗装备后要同步清理 `inventory`、`unsecuredLoot`、`journeyNewItems`、`lastLoot`、`lastLoots`。
+
+建议实现一个统一候选函数，只负责展示排序：
+
+```js
+function turnInGearCandidates(s, rule) {
+  const equipped = new Set(Object.values(s.equipment).filter(Boolean));
+  return s.inventory
+    .filter(item => !equipped.has(item.id))
+    .sort((a, b) => Number(s.unsecuredLoot.includes(b.id)) - Number(s.unsecuredLoot.includes(a.id)) || itemScore(a) - itemScore(b));
+}
+```
+
+玩家提交时再校验 `selectedItemIds.length === rule.count`，并确认所有 id 仍是未装备物品。校验失败则拒绝提交，不扣材料。
+
+#### 兑现结果
+
+成功交付后，奖励要明显高于直接拿普通奖励：
+
+- 消耗 3 张低等级技能牌：换一张高等级定向卡牌，或把指定流派最低等级牌升级。
+- 消耗 2 件未装备物品：换一件高品质装备，或开启一次只卖强力装备的隐藏商店。
+- 消耗本段 4 件收获：获得一个强力短期祝福，适合冲 Boss。
+
+失败或拒绝时，不要惩罚：
+
+- 材料不足：物件没有长成，获得少量旅币或一句剧情回声。
+- 玩家拒绝：承诺结束，不扣材料。
+- 中途返回：普通承诺可保留；如果是明确“带到下一盏灯”的承诺，可按剧情清除但不额外扣资源。
+
+### 12.10 隐藏商店商品生成
+
+第一版不需要新增专属道具池，直接复用现有装备和卡牌。
+
+商品生成规则：
+
+- 装备从 `CHAPTER_LOOT[s.stage]` 或当前章节之前的装备池中挑选。
+- 商品装备调用 `rollItem(s, base, true)` 生成，确保品质偏高。
+- 卡牌从当前已解锁卡池中挑选，等级可用 `skillRewardRank(s, key) + 1`，上限 10。
+- Buff 可以复用已有字段，比如 `hotDrinkBattles`、`relic`、`hp`、`gold`，不要第一版就加很多新 buff 字段。
+
+建议第一版商店固定 3 类商品：
+
+1. 一件高品质装备。
+2. 一张高等级卡牌。
+3. 一个短期祝福，例如热饮、恢复或下场战斗开局护盾。
+
+### 12.11 Buff 落地方式
+
+为了减少新系统，第一版优先复用已有状态：
+
+- 热饮类：复用 `hotDrinkBattles`，首回合 +1 能量。
+- 护盾类：如果已有 `relic` 是永久靠枕，不建议混用；可以新增 `sideStartBlockBattles`，进入战斗时消耗。
+- 恢复类：直接加 `hp`。
+- 清负面类：清 `healingSuppression` 和 `weak`。
+
+如果新增临时 buff，字段建议简单：
+
+```js
+sideBuffs: [
+  { key: 'umbrellaBlock', battles: 2, block: 8 },
+]
+```
+
+进入战斗的 `beginBattle(s)` 里检查并消耗：
+
+```js
+const umbrella = s.sideBuffs?.find(buff => buff.key === 'umbrellaBlock');
+if (umbrella) {
+  s.block += umbrella.block;
+  umbrella.battles--;
+  log(s, '旧伞在梦境入口撑开，替你挡住一阵雨。');
+}
+s.sideBuffs = s.sideBuffs.filter(buff => buff.battles > 0);
+```
+
+### 12.12 现有 UI 怎么改
+
+在 `src/main.jsx` 中新增两个组件：
+
+- `SideStoryView`
+- `SideResolveView`
+
+`SideStoryView`：
+
+- 读取 `SIDE_STORIES[state.sideStory.id].intro`。
+- 使用 `Overlay` 展示标题和正文。
+- 用 `CampChoice` 展示选项。
+- 按钮只显示动作，不显示奖励数值。
+
+`SideResolveView`：
+
+- 读取 `state.pendingScene`。
+- 如果是普通奖励，显示一个确认按钮。
+- 如果是隐藏商店，展示 2 至 3 个商品按钮。
+- 商品按钮显示叙事 label，不显示“攻击 +X”等具体词条。
+- 点击商品后，装备详情可以仍通过日志或获得提示展示。
+- 如果是消耗材料型兑现，展示可交出的技能牌或装备列表，让玩家手动选择。
+- 技能牌列表要标明 `NEW`、等级、是否出战；装备列表要标明 `NEW`、品质、槽位、是否未装备。
+- 已装备装备不显示；唯一核心牌不显示；提交后仍要由 `transition()` 再校验一次。
+- 材料不足时显示剧情文本和离开按钮，不显示灰掉的一堆不可点材料，避免玩家误以为自己操作错了。
+
+`App` 的 phase 分发处增加：
+
+```jsx
+{state.phase === 'sideStory' && <SideStoryView state={state} dispatch={dispatch} />}
+{state.phase === 'sideResolve' && <SideResolveView state={state} dispatch={dispatch} />}
+```
+
+第一版不建议在地图顶部常驻显示“未兑现承诺”，因为用户明确希望玩家记住支线，不靠小字提示。但可以在“最近战报”里留下触发日志，给二周目玩家回看。
+
+### 12.13 文案落地模板
+
+每个支线至少写 5 段文本：
+
+1. `intro.text`：首次遇到。
+2. `choiceA.log`：选择 A 后一句短日志。
+3. `choiceB.log`：选择 B 后一句短日志。
+4. `resolve.text`：兑现剧情。
+5. `miss.text`：条件不足、金币不够或错过机会。
+
+示例：摊主的盒子
+
+```text
+intro:
+午夜摊主把一个小盒子放到房车门口。盒子不能见月光，也不能听见钟声。他说：“如果方便，替我保管到下一段路。”
+
+choice keep:
+你把盒子收进副驾驶下方。里面轻轻响了一下，又安静下来。
+
+choice decline:
+摊主把盒子抱回怀里，仍然递来一枚温热硬币。
+
+resolve:
+摊主追上房车。盒子一路都没有醒。他向你道谢，并打开一只只卖给守信者的抽屉。
+
+miss:
+摊主看了看你的旅币，又笑着合上抽屉：“今晚先记在风里，下次有缘再见。”
+```
+
+### 12.14 第一批事件具体配置
+
+#### 摊主的盒子
+
+出现章节：午夜星光集市，也可低概率出现在其他章节。
+
+选择：
+
+- 保管盒子：8 步后触发隐藏商店。
+- 婉拒摊主：立刻获得少量旅币。
+
+兑现：
+
+- 隐藏商店出现 3 个商品。
+- 可购买高品质装备、高等级卡牌或短期祝福。
+- 旅币不足只错过商品。
+
+#### 没拆封的礼物
+
+出现章节：花田终点站、终年下雨的城。
+
+选择：
+
+- 现在拆开：立刻获得恢复或少量旅币。
+- 带到下一盏灯下：下一个路标兑现。
+
+兑现：
+
+- 获得一张高等级卡牌，优先给当前角色偏好的流派。
+- 如果抵达路标前中途返回，这个承诺可以清除，不额外惩罚。
+
+#### 没有发出的晚安
+
+出现章节：终年下雨的城、云端旧书街。
+
+选择：
+
+- 替她带一句晚安：若干战斗后获得书信类卡牌。
+- 把手机扣在桌上：立刻清负面和回复生命。
+
+兑现：
+
+- 获得 `returnedLetter`、`unsent` 或 `homeboundMail` 的适当等级版本。
+- 如果该卡未解锁，可用低等级提前掉落，形成惊喜。
+
+#### 雨夜赊伞
+
+出现章节：终年下雨的城。
+
+选择：
+
+- 接过那把伞：6 步后伞店老板出现。
+- 把伞留给别人：下场战斗获得开局护盾。
+
+兑现：
+
+- 旅币足够时可购买一件护盾向装备，优先 `blueUmbrella`、`windowCoat`、`oathPlate`。
+- 旅币不足则归还伞，获得少量恢复。
+
+### 12.14 主线线索怎么先落地
+
+第一版不做线索图鉴，但可以先在数据里留字段：
+
+```js
+namelessClues: [],
+```
+
+支线或章节通关时加入线索 key：
+
+```js
+namelessClues: ['blankTicket', 'atticRoom', 'lastPageLine']
+```
+
+客人房间里可以先不展示线索，等第三阶段再做“登记簿”页面。当前只在日志里写：
+
+```text
+登记簿最后一页浮现出一角，但名字仍然看不清。
+```
+
+第六章通关后，根据线索数量追加不同日志：
+
+- 线索少：终点站亮起一盏灯。
+- 线索多：登记簿上出现一行名字。
+
+这样第一版已经能埋主线，又不会被 UI 工作拖慢。
+
+### 12.15 和现有规则的衔接
+
+必须遵守 handoff 中的限制：
+
+- 地图上不能整理行囊、不能换装、不能使用工坊。
+- 支线商店可以买到新东西，但不应允许现场装备；获得装备后仍进入背包，回房车才能换。
+- 非路标返回只处理本段未存放奖励，支线获得的装备和卡牌如果属于本段收获，也应进入 `unsecuredLoot` 或 `unsecuredCards`。
+- 路标安全返回时，应保存支线获得的未存放奖励。
+- 支线不能使用系统 `alert/confirm`，必须走游戏内弹窗。
+- 卡牌数值和装备数值仍由现有函数计算，支线只负责“给哪张、什么时候给”。
+
+### 12.16 测试建议
+
+实现第一版后，至少补这些测试：
+
+- 新存档包含 `sideStory`、`sidePromises`、`sideStorySeen`、`pendingScene`。
+- 支线选择后能写入承诺，并回到地图。
+- 步数到期后进入 `sideResolve`。
+- 隐藏商店金币足够时能购买，金币不足时不会扣钱。
+- 消耗材料型支线必须由玩家选择材料，不能自动消耗。
+- 玩家选择不足数量的技能牌或装备时，不能提交，不能扣材料。
+- 选择出战技能牌后如果会导致出战牌组低于 10 张，不能提交，不能扣材料。
+- 已装备装备不能出现在消耗候选列表，也不能通过伪造 action 被消耗。
+- 支线奖励卡牌进入 `cardLibrary`，且作为本次收获进入 `unsecuredCards`。
+- 支线奖励装备进入 `inventory`，且作为本次收获进入 `unsecuredLoot`。
+- 路标返回能保存支线奖励。
+- 非路标返回可能丢失支线未存放奖励，但不会丢已装备物品。
+- `restore()` 能拒绝畸形 `sidePromises` 和非法 `pendingScene`。
+
+### 12.17 最小可玩验收
+
+第一版完成后，用一局测试判断是否达标：
+
+1. 第一次开局前 20 步内大概率能遇到一个支线。
+2. 选项文案看起来像剧情选择，不像奖励选择。
+3. 选择后不会立刻剧透完整奖励。
+4. 若干步、战斗或路标后，兑现剧情能明显呼应前文。
+5. 奖励足够有惊喜，至少包括高等级卡、稀有装备、隐藏商店或强力短期祝福之一。
+6. 金币不足、血量不足或中途返回不会制造恶意死亡陷阱。
+7. 第二次遇到同一事件时，玩家能靠记忆做策略判断。
