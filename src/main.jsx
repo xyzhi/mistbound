@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import {
   AlertTriangle, ArrowLeft, Backpack, BookOpen, Check, ChevronDown, CircleHelp, Coins, Combine, Crown, Flame, FlaskConical, Gem, Heart, Hourglass,
-  House, ListPlus, Lock, MapPin, Menu, Moon, PackageOpen, Shield, Shirt,
+  House, ListPlus, Lock, MapPin, Menu, Moon, PackageOpen, Scale, Shield, Shirt,
   Sparkles, Swords, Target, TentTree, Trash2, TrendingUp, Volume2, VolumeX, Wind, Wrench, X,
 } from 'lucide-react';
 import {
@@ -420,8 +420,8 @@ function Splash({ saved, onNew, onContinue }) {
 
 const featureUnlocks = state => ({
   bag: state.victories > 0 || state.inventory.length > 2,
-  workshop: state.stepsTraveled >= 10 || state.inventory.length >= 5,
-  guests: state.clears.some(count => count > 0),
+  workshop: state.stepsTraveled >= 20 || state.inventory.length >= 8,
+  guests: state.clears.reduce((sum, count) => sum + count, 0) >= 2,
 });
 
 function CamperHub({ state, dispatch, onDrawer, onSpecialization, onWorkshop, onGuests, newlyUnlockedStage }) {
@@ -1242,21 +1242,41 @@ function GearRow({ item, equipped, onOpen, isNew = false }) {
   </button>;
 }
 
-function AcquisitionModal({ entries, onClose }) {
+function AcquisitionModal({ entries, state, dispatch, onClose }) {
+  const [decisions, setDecisions] = useState({});
+  const [comparingGear, setComparingGear] = useState(null);
+  const acquisitionKey = entries.map(entry => entry.kind === 'gear' ? `gear:${entry.item.id}` : `card:${entry.key}`).join('|');
+  useEffect(() => {
+    setDecisions({});
+    setComparingGear(null);
+  }, [acquisitionKey]);
   if (!entries.length) return null;
   const cards = entries.filter(entry => entry.kind === 'card');
   const gears = entries.filter(entry => entry.kind === 'gear');
   const single = entries.length === 1 ? entries[0] : null;
   const title = single?.kind === 'card' ? '新的回忆回应了你' : single?.kind === 'gear' ? '一件旧物选择了你' : '夜路带回新的收获';
+  const cardIds = new Map();
+  const idFor = entry => {
+    if (entry.kind === 'gear') return `gear:${entry.item.id}`;
+    const count = cardIds.get(entry.key) || 0;
+    cardIds.set(entry.key, count + 1);
+    return `card:${entry.key}:${count}`;
+  };
+  const renderedEntries = entries.map(entry => ({ entry, id: idFor(entry) }));
+  const pending = renderedEntries.filter(({ id }) => !decisions[id]).length;
+  const decide = (id, choice) => setDecisions(current => ({ ...current, [id]: choice }));
+  const comparisonItem = comparingGear ? itemFor(state, comparingGear.item.id) : null;
   return createPortal(<div className="acquisition-backdrop" role="presentation">
     <section className={`acquisition-modal ${single ? 'is-single' : 'is-group'}`} role="dialog" aria-modal="true" aria-labelledby="acquisition-title">
       <div className="acquisition-radiance" aria-hidden="true"><i /><i /><i /><i /><i /><i /></div>
       <span className="eyebrow">JOURNEY KEEPSAKE · 旅途收获</span>
       <h2 id="acquisition-title">{title}</h2>
-      <p>{single?.kind === 'card' ? '这张技能已经收入候补，回到房车后可以调整出战牌组。' : single?.kind === 'gear' ? '装备已经放入背包，回到房车后可以查看并换上。' : `共收下 ${entries.length} 件物品，已经妥善放入房车行囊。`}</p>
-      {cards.length > 0 && <div className="acquisition-cards">{cards.map((entry, index) => <div className="acquisition-card" key={`${entry.key}-${index}`} style={{ '--reveal-delay': `${index * 90}ms` }}><CardView cardKey={entry.key} compact /><strong>{card(entry.key).name}</strong><small>技能 · Lv.{cardRank(entry.key)}</small></div>)}</div>}
-      {gears.length > 0 && <div className="acquisition-gears">{gears.map((entry, index) => <div className="acquisition-gear" key={entry.item.id} style={{ '--reveal-delay': `${(cards.length + index) * 90}ms` }}><GearRow item={entry.item} isNew /><small>{entry.item.rarity}装备 · 已放入背包</small></div>)}</div>}
-      <button className="primary acquisition-accept" onClick={onClose}><Check />收下</button>
+      <p>{single?.kind === 'card' ? '技能已收入候补，现在可以决定是否加入出战牌组。' : single?.kind === 'gear' ? '装备已放入背包，可以比较后决定是否换上。' : `共获得 ${entries.length} 件物品，请分别决定是否立即装备。`}</p>
+      <div className="acquisition-risk"><AlertTriangle /><span><strong>非路标返回可能丢失</strong><small>暂不装备的技能或装备仍会留在收获中，但匆忙返回房车时可能随机遗失。</small></span></div>
+      {cards.length > 0 && <div className="acquisition-cards">{renderedEntries.filter(({ entry }) => entry.kind === 'card').map(({ entry, id }, index) => <div className="acquisition-card" key={id} style={{ '--reveal-delay': `${index * 90}ms` }}><CardView cardKey={entry.key} compact /><strong>{card(entry.key).name}</strong><small>技能 · Lv.{cardRank(entry.key)}</small><div className="acquisition-item-actions"><button className={decisions[id] === 'equip' ? 'selected' : ''} onClick={() => { dispatch({ type: 'equipAcquired', kind: 'card', key: entry.key }); decide(id, 'equip'); }}><Check />加入出战</button><button className={decisions[id] === 'skip' ? 'selected risk' : 'risk'} onClick={() => decide(id, 'skip')}><X />暂不加入</button></div></div>)}</div>}
+      {gears.length > 0 && <div className="acquisition-gears">{renderedEntries.filter(({ entry }) => entry.kind === 'gear').map(({ entry, id }, index) => <div className="acquisition-gear" key={id} style={{ '--reveal-delay': `${(cards.length + index) * 90}ms` }}><GearRow item={entry.item} isNew onOpen={() => setComparingGear({ item: entry.item, id })} /><small>{entry.item.rarity}装备 · 已放入背包</small><div className="acquisition-item-actions"><button className={decisions[id] === 'equip' ? 'selected' : ''} onClick={() => setComparingGear({ item: entry.item, id })}><Scale />比较并装备</button><button className={decisions[id] === 'skip' ? 'selected risk' : 'risk'} onClick={() => decide(id, 'skip')}><X />暂不装备</button></div></div>)}</div>}
+      <button className="primary acquisition-accept" disabled={pending > 0} onClick={onClose}><Check />{pending > 0 ? `还有 ${pending} 项未选择` : '完成'}</button>
+      {comparisonItem && <GearDetail state={state} item={comparisonItem} disabled={false} onClose={() => setComparingGear(null)} onEquip={() => { dispatch({ type: 'equipAcquired', kind: 'gear', key: comparisonItem.id }); decide(comparingGear.id, 'equip'); setComparingGear(null); }} />}
     </section>
   </div>, document.body);
 }
@@ -1338,7 +1358,7 @@ function GuestRooms({ state, dispatch }) {
       const claimed = state.guestRewards[index];
       const guestName = index === GUESTS.length - 1 && state.namelessClues?.includes('registeredName') ? '朝安' : guest.name;
       const story = locked ? '完成上一站后，这间客房才会亮灯。' : (progress ? guest.chapters[progress - 1] : guest.wish);
-      const rewardLabel = claimed ? '已领取' : progress < 3 ? `再探索 ${3 - progress} 次` : `领取「${guest.gift}」`;
+      const rewardLabel = claimed ? '已领取' : progress < 3 ? `通关「${CHAPTERS[index].name}」${3 - progress} 次后领取` : `领取「${guest.gift}」`;
       return <article key={guest.name} className={locked ? 'locked' : ''}>
         <div className="guest-number">{locked ? <Lock /> : String(index + 1).padStart(2, '0')}</div>
         <div className="guest-copy"><small>{guest.room} · {CHAPTERS[index].name}</small><strong>{locked ? '尚未入住' : guestName}</strong><p>{story}</p><div className="story-progress">{[1, 2, 3].map(step => <i key={step} className={step <= progress ? 'active' : ''} />)}</div></div>
@@ -1349,16 +1369,18 @@ function GuestRooms({ state, dispatch }) {
 }
 
 const COMMISSION_META = [
-  { key: 'battles', title: '安抚沿途梦境', icon: Moon },
-  { key: 'steps', title: '记录夜路足迹', icon: MapPin },
-  { key: 'stories', title: '送旅客到清晨', icon: House },
+  { key: 'battles', title: '赢得战斗', icon: Moon, unit: '场战斗', hint: remaining => `再赢 ${remaining} 场战斗可领取旅币` },
+  { key: 'steps', title: '途经步数', icon: MapPin, unit: '步', hint: remaining => `再途经 ${remaining} 步可领取旅币` },
+  { key: 'stories', title: '通关章节', icon: House, unit: '次通关', hint: remaining => `再击败 ${remaining} 次章节首领可领取旅币` },
 ];
 
 function CommissionBoard({ state, dispatch }) {
-  return <section className="commission-board"><header><BookOpen /><span><strong>旅程委托</strong><small>完成后会自动刷新下一档目标。</small></span></header>
+  return <section className="commission-board"><header><BookOpen /><span><strong>旅程委托</strong><small>按目标游玩，完成后回来领取旅币。</small></span></header>
     {COMMISSION_META.map(meta => {
       const task = commissionStatus(state, meta.key), Icon = meta.icon, complete = task.value >= task.target;
-      return <article key={meta.key}><Icon /><span><strong>{meta.title}</strong><small>{Math.min(task.value, task.target)} / {task.target}</small><Bar value={task.value} max={task.target} tone="xp" /></span><button disabled={!complete} onClick={() => dispatch({ type: 'claimCommission', key: meta.key })}>{complete ? `领取 ${task.reward}` : `奖励 ${task.reward}`}</button></article>;
+      const current = Math.min(task.value, task.target);
+      const remaining = Math.max(0, task.target - task.value);
+      return <article key={meta.key}><Icon /><span><strong>{meta.title}</strong><small>{current} / {task.target} {meta.unit} · {complete ? '已完成，回来领取旅币' : meta.hint(remaining)}</small><Bar value={task.value} max={task.target} tone="xp" /></span><button disabled={!complete} onClick={() => dispatch({ type: 'claimCommission', key: meta.key })}>{complete ? `领取 ${task.reward} 旅币` : `奖励 ${task.reward} 旅币`}</button></article>;
     })}
   </section>;
 }
@@ -1438,7 +1460,7 @@ function DebugPanel({ state, dispatch, onClose, onLaunch }) {
       </section>
       <section className="debug-section">
         <h3>角色与资源</h3>
-        <div className="debug-buttons"><button onClick={() => act('gold')}>旅币 +1000</button><button onClick={() => act('level')}>等级 +1</button><button onClick={() => act('heal')}>恢复全部状态</button><button onClick={() => act('unlock')}>解锁全部章节</button></div>
+        <div className="debug-buttons"><button onClick={() => act('gold')}>旅币 +1000</button><button onClick={() => act('level')}>等级 +1</button><button onClick={() => act('heal')}>恢复全部状态</button><button onClick={() => act('unlockWorkshop')}>解锁工坊</button><button onClick={() => act('unlockGuests')}>解锁客人</button><button onClick={() => act('unlock')}>解锁全部章节</button></div>
       </section>
       <section className="debug-section">
         <h3>装备与技能</h3>
@@ -1722,8 +1744,8 @@ function App() {
   const dispatch = React.useCallback(action => setState(current => transition(current, action)), []);
   const openHubFeature = (tab, key) => { dispatch({ type: 'viewFeature', key }); setDrawer(tab); };
   if (!state) return <Splash saved={saved} onContinue={() => { clearValueFloaters(); setState(saved); }} onNew={startNew} />;
-  if (state.phase === 'lost' && !settling) return <><Finale won={false} state={state} onEnd={resetRun} /><ValueFloaters items={valueFloaters} /><AcquisitionModal entries={acquisition} onClose={() => setAcquisition([])} /></>;
-  if (state.phase === 'hub') return <><CamperHub state={state} dispatch={dispatch} newlyUnlockedStage={newlyUnlockedStage} onDrawer={() => openHubFeature('character', 'bag')} onSpecialization={() => { dispatch({ type: 'viewSpecialization' }); setDrawer('specialization'); }} onWorkshop={() => openHubFeature('workshop', 'workshop')} onGuests={() => openHubFeature('guests', 'guests')} />{drawer && <Drawer initialTab={drawer} state={state} dispatch={dispatch} onClose={() => setDrawer(false)} onRestart={() => setConfirmingRestart(true)} />}{confirmingRestart && <RestartConfirm fromJourney={false} onCancel={() => setConfirmingRestart(false)} onConfirm={resetRun} />}<ValueFloaters items={valueFloaters} /><AcquisitionModal entries={acquisition} onClose={() => setAcquisition([])} /></>;
+  if (state.phase === 'lost' && !settling) return <><Finale won={false} state={state} onEnd={resetRun} /><ValueFloaters items={valueFloaters} /><AcquisitionModal entries={acquisition} state={state} dispatch={dispatch} onClose={() => setAcquisition([])} /></>;
+  if (state.phase === 'hub') return <><CamperHub state={state} dispatch={dispatch} newlyUnlockedStage={newlyUnlockedStage} onDrawer={() => openHubFeature('character', 'bag')} onSpecialization={() => { dispatch({ type: 'viewSpecialization' }); setDrawer('specialization'); }} onWorkshop={() => openHubFeature('workshop', 'workshop')} onGuests={() => openHubFeature('guests', 'guests')} />{drawer && <Drawer initialTab={drawer} state={state} dispatch={dispatch} onClose={() => setDrawer(false)} onRestart={() => setConfirmingRestart(true)} />}{confirmingRestart && <RestartConfirm fromJourney={false} onCancel={() => setConfirmingRestart(false)} onConfirm={resetRun} />}<ValueFloaters items={valueFloaters} /><AcquisitionModal entries={acquisition} state={state} dispatch={dispatch} onClose={() => setAcquisition([])} /></>;
   return <main className="game-shell">
     <header className="topbar"><div><Tip text={`当前为${DIFFICULTIES[state.difficulty].name}难度，${state.battleMode === 'auto' ? '系统会自动选择卡牌' : '由你手动选择卡牌'}；这两项设置会贯穿整局。`}><span>Lv.{state.level} · 第 {state.stage + 1} / {ENEMIES.length} 站 · {DIFFICULTIES[state.difficulty].name} · {state.battleMode === 'auto' ? '自动' : '手动'}</span></Tip><strong>{location}</strong></div><div className="route">{ENEMIES.map((_, i) => <i key={i} className={i <= state.stage ? 'active' : ''} />)}</div><span className="topbar-gold" aria-label={`当前有 ${state.gold} 枚旅币`}><Coins />{state.gold}</span></header>
     {state.phase === 'map' && <MapView state={state} dispatch={dispatch} onDebug={() => setDebugOpen(true)} />}
@@ -1741,7 +1763,7 @@ function App() {
     {state.phase === 'sideResolve' && <SideResolveView state={state} dispatch={dispatch} />}
     {debugOpen && state.phase === 'map' && <DebugPanel state={state} dispatch={dispatch} onClose={() => setDebugOpen(false)} onLaunch={() => setDebugOpen(false)} />}
     <ValueFloaters items={valueFloaters} />
-    <AcquisitionModal entries={acquisition} onClose={() => setAcquisition([])} />
+    <AcquisitionModal entries={acquisition} state={state} dispatch={dispatch} onClose={() => setAcquisition([])} />
   </main>;
 }
 

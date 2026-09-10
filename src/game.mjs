@@ -5,6 +5,7 @@ export const CARD_RANK_GROWTH = .34;
 export const SPECIALIZATION_UNLOCK_STAGE = 1;
 export const MAX_SPECIALIZATION_POINTS = 30;
 export const DISORDER_GOLD_LOSS_PERCENT = 20;
+const BATTLE_GOLD_SCALE = 1.2;
 export function disorderGoldLoss(gold) {
   return Math.ceil(Math.max(0, gold || 0) * DISORDER_GOLD_LOSS_PERCENT / 100);
 }
@@ -136,12 +137,12 @@ export const CHAPTERS = [
   { name: '被遗忘的终点站', subtitle: '传奇与套装底材', art: 4, weather: '未知', color: '#a7a0ca' },
 ];
 export const GUESTS = [
-  { name: '小满', room: '01号客房', title: '不肯告别的园丁', wish: '想把花田里最后一束花送出去。', chapters: ['她每天都在重复修剪同一片花田。', '她终于记起，那束花原本要送给谁。', '清晨，她把花留在窗边，第一次离开了花田。'], gift: '会写字的钢笔' },
-  { name: '林夏', room: '02号客房', title: '等雨停的人', wish: '相信雨停以后，错过的人还会回来。', chapters: ['她把每一次雨声都当成敲门声。', '房间里那把伞，从来不是为自己准备的。', '雨没有停，但她决定撑伞出门。'], gift: '守夜风衣' },
-  { name: '阿纸', room: '03号客房', title: '忘记结局的读者', wish: '寻找一本被自己撕掉结局的旧书。', chapters: ['书街上的每本书都少了最后一页。', '他承认自己害怕看到故事结束。', '他写下新的结尾，把书留在旅店书架上。'], gift: '没有日期的房卡' },
-  { name: '遥遥', room: '04号客房', title: '没有影子的旅客', wish: '想在海岸找回曾经舍弃的那部分自己。', chapters: ['她的脚印旁边从来没有影子。', '海面倒映出一个被她遗忘的选择。', '日出时，两道影子重新重叠。'], gift: '星光披肩' },
-  { name: '七月', room: '05号客房', title: '收走愿望的摊主', wish: '替别人保管太多愿望，忘了自己的那个。', chapters: ['每件商品都写着陌生人的愿望。', '最旧的盒子上，落款却是她自己。', '她关掉摊位，带着唯一没有出售的愿望上车。'], gift: '黄昏留声机' },
-  { name: '无名旅客', room: '阁楼客房', title: '最后一站的乘客', wish: '希望有人记得，自己曾经来过这里。', chapters: ['行李牌上的名字被雨水洗掉了。', '六座城市都留有属于这位旅客的物件。', '登记簿上出现名字时，终点站重新亮起灯。'], gift: '无名旅客的钥匙' },
+  { name: '小满', room: '01号客房', title: '不肯告别的园丁', wish: '她抱着一盆枯掉一半的绣球上车，想把最后一束花送给迟迟没来的人。', chapters: ['她总在花田里剪同一根枯枝，剪完又重新长出来。', '她想起约好换盆的人不会再来，于是把花束从土里取出来。', '清晨，她把花放在房车窗边，没有写收件人，也没有再回花田。'], gift: '会写字的钢笔' },
+  { name: '林夏', room: '02号客房', title: '等雨停的人', wish: '她每隔几分钟就看一次手机，门口还摆着一双没有人穿的雨鞋。', chapters: ['雨声一响，她就以为有人敲门，手机屏幕也一直亮着。', '她承认那把多出来的伞不是为了等人，而是舍不得承认约定结束了。', '雨还在下，她穿上自己的雨鞋，删掉没发出去的消息，推门出去了。'], gift: '守夜风衣' },
+  { name: '阿纸', room: '03号客房', title: '忘记结局的读者', wish: '她带来一本少了最后一页的旧书，想找回自己亲手撕掉的结局。', chapters: ['书街上每本书都缺最后一页，她却把碎纸藏在口袋里。', '她终于承认自己怕看的不是结尾，而是那句已经说出口的话。', '她把旧结局贴回去，又添了一页新纸，留在房车书架上。'], gift: '没有日期的房卡' },
+  { name: '遥遥', room: '04号客房', title: '没有影子的旅客', wish: '她总先问别人冷不冷，却说不出自己想去哪里，脚边也没有影子。', chapters: ['海岸路灯照出所有人的影子，只有她的脚边空着。', '潮水放回那天的告别，她第一次没有替对方找理由。', '日出时，她对海面说了“不”，第二道影子从水里走回她身边。'], gift: '星光披肩' },
+  { name: '七月', room: '05号客房', title: '收走愿望的摊主', wish: '她拎着一串摊位钥匙入住，记得所有客人的愿望，却找不到自己的盒子。', chapters: ['每个抽屉都贴着别人的愿望，只有最底层的木盒没有标价。', '她发现旧盒子的落款是自己，里面装着被她搁置很久的请求。', '她关掉摊位灯，只带走那个没有出售的盒子，终于坐上房车休息。'], gift: '黄昏留声机' },
+  { name: '无名旅客', room: '阁楼客房', title: '最后一站的乘客', wish: '阁楼房门自己亮着灯，登记簿最后一页缺了名字，只剩一只旧行李箱。', chapters: ['行李牌被雨水洗白，箱子里却放着前几位客人留下的旧物。', '车票、伞柄、书页、脚印和愿望封条拼出同一个阁楼房号。', '登记簿补回名字后，终点站的灯重新亮起，她终于有了自己的房间。'], gift: '无名旅客的钥匙' },
 ];
 export const MAIN_STORY = [
   {
@@ -235,7 +236,7 @@ export const SIDE_STORIES = {
     name: '没拆封的礼物', chapters: [0, 1], minRow: 5,
     intro: { eyebrow: '夜路插曲', title: '皱丝带礼物盒', text: '座位底下滚出一个皱丝带礼物盒，包装纸完好，盒上没有收件人，只写着“等到灯亮的时候再拆”。', choices: [{ key: 'open', title: '现在拆开礼物盒' }, { key: 'carry', title: '带礼物盒到下一盏灯下' }] },
     branches: {
-      open: { log: '你拆开盒子，里面只是几颗糖。至少今晚不用再猜。', effect: { type: 'healGold', heal: 10, gold: 8 } },
+      open: { log: '你拆开盒子，里面除了糖果，还压着一叠写给夜路旅人的车票。至少今晚不用再猜。', effect: { type: 'healGold', heal: 10, gold: 240 } },
       carry: { log: '你把礼物盒放到副驾驶。丝带晃了一下，又重新安静下来。', promise: { type: 'card', due: 'checkpoint', key: 'mend', rankBonus: 2 } },
     },
     resolve: { title: '皱丝带礼物盒打开了', text: '路标亮起时，皱丝带礼物盒自己松开丝带。里面不是糖果，而是一张写给自己的卡片。' },
@@ -311,7 +312,7 @@ export const SIDE_STORIES = {
     intro: { eyebrow: '夜路插曲', title: '摊主怕月光的盒子', text: '午夜摊主把一个怕月光的盒子放到房车门口。盒子也不能听见钟声。他说：“如果方便，替我保管到下一段路。”', choices: [{ key: 'keep', title: '保管怕月光的盒子' }, { key: 'decline', title: '把盒子还给摊主' }] },
     branches: {
       keep: { log: '你把怕月光的盒子收进副驾驶下方。里面轻轻响了一下，又安静下来。', promise: { type: 'shop', afterSteps: 8, shop: 'vendor' } },
-      decline: { log: '摊主把盒子抱回怀里，仍然递来一枚温热硬币。', effect: { type: 'gold', value: 20 } },
+      decline: { log: '摊主把盒子抱回怀里，仍然递来一袋沉甸甸的星光币。', effect: { type: 'gold', value: 400 } },
     },
     resolve: { title: '摊主来取怕月光的盒子', text: '摊主追上房车。怕月光的盒子一路都没有醒。他向你道谢，并打开一只只卖给守信者的抽屉。' },
   },
@@ -1567,7 +1568,8 @@ function victory(s) {
   const foe = enemyFor(s);
   const difficulty = DIFFICULTIES[s.difficulty] || DIFFICULTIES.standard;
   const rewardScale = difficulty.reward;
-  s.victories++; s.gold += Math.round((24 + s.stage * 8 + (s.elite ? 16 : 0)) * rewardScale);
+  const encounterGoldBonus = s.bossFight ? 32 : s.elite ? 16 : 0;
+  s.victories++; s.gold += Math.round((24 + s.stage * 8 + encounterGoldBonus) * BATTLE_GOLD_SCALE);
   s.pillowActive = false;
   progressCriticalSideQuests(s, foe);
   const xpGain = Math.round((30 + s.stage * 14 + (s.elite ? 18 : 0)) * rewardScale);
@@ -1772,6 +1774,15 @@ export function transition(state, action) {
     } else if (action.operation === 'heal') {
       s.hp = s.maxHp; s.energy = 3; s.block = 0; s.weak = 0;
       log(s, '测试面板：生命与战斗资源已恢复。');
+    } else if (action.operation === 'unlockWorkshop') {
+      s.stepsTraveled = Math.max(s.stepsTraveled || 0, 20);
+      log(s, '测试面板：房车工坊已解锁。');
+    } else if (action.operation === 'unlockGuests') {
+      s.clears ||= Array(ENEMIES.length).fill(0);
+      s.clears[0] = Math.max(s.clears[0] || 0, 2);
+      s.unlocked = Math.max(s.unlocked, Math.min(1, ENEMIES.length - 1));
+      ensureCriticalSideQuests(s);
+      log(s, '测试面板：客人房间已解锁。');
     } else if (action.operation === 'unlock') {
       s.unlocked = ENEMIES.length - 1;
       log(s, '测试面板：全部章节已解锁。');
@@ -2185,6 +2196,27 @@ export function transition(state, action) {
     s.phase = 'map';
     continueSideScenes(s, 'turnin');
     return s;
+  }
+  if (action.type === 'equipAcquired' && !['combat', 'reward', 'lost'].includes(s.phase)) {
+    if (action.kind === 'card') {
+      const key = String(action.key || '');
+      const ownedCount = s.cardLibrary.filter(cardKey => cardKey === key).length;
+      const activeCount = s.deck.filter(cardKey => cardKey === key).length;
+      if (!(s.unsecuredCards || []).includes(key) || activeCount >= ownedCount) return state;
+      s.deck.push(key);
+      s.unsecuredCards.splice(s.unsecuredCards.indexOf(key), 1);
+      log(s, `将新技能「${card(key).name}」加入出战牌组。`);
+      return s;
+    }
+    if (action.kind === 'gear') {
+      const instance = itemFor(s, action.key);
+      const item = instance && ITEMS[instance.base];
+      if (!item || !(s.unsecuredLoot || []).includes(instance.id)) return state;
+      s.equipment[item.slot] = instance.id;
+      log(s, `已装备新获得的「${itemName(instance)}」。`);
+      return s;
+    }
+    return state;
   }
   if (action.type === 'equip' && s.phase === 'hub') {
     const instance = itemFor(s, action.key);

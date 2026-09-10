@@ -409,6 +409,26 @@ test('胜利获得经验、升级并按 0 至 3 件规则掉落装备', () => {
   }
 });
 
+test('战斗旅币不随难度变化且 Boss 奖励高于精英和普通怪', () => {
+  const victoryGold = (difficulty, encounter = 'normal') => {
+    const state = enterBattle(3101, 'manual');
+    state.difficulty = difficulty;
+    state.gold = 0;
+    state.elite = encounter === 'elite';
+    state.bossFight = encounter === 'boss';
+    state.enemy.hp = 1;
+    state.hand = ['slash'];
+    state.energy = 3;
+    return transition(state, { type: 'play', index: 0 }).gold;
+  };
+
+  assert.equal(victoryGold('relaxed'), 29);
+  assert.equal(victoryGold('standard'), 29);
+  assert.equal(victoryGold('challenge'), 29);
+  assert.equal(victoryGold('standard', 'elite'), 48);
+  assert.equal(victoryGold('standard', 'boss'), 67);
+});
+
 test('本次探索获得的装备和技能会标记为新内容，并在下一次启程时清空', () => {
   let state = newRun(123, 'manual', 'standard', 'gaigai');
   state.phase = 'reward'; state.enemy.hp = 0; state.choices = ['riposte', 'leech', 'quick'];
@@ -1019,6 +1039,11 @@ test('隐藏测试面板操作不会破坏存档并可跳转路标', () => {
   let state = newRun(818, 'manual');
   state = transition(state, { type: 'debug', operation: 'gold' });
   state = transition(state, { type: 'debug', operation: 'level' });
+  state = transition(state, { type: 'debug', operation: 'unlockWorkshop' });
+  assert.ok(state.stepsTraveled >= 20);
+  state = transition(state, { type: 'debug', operation: 'unlockGuests' });
+  assert.ok(state.clears.reduce((sum, count) => sum + count, 0) >= 2);
+  assert.ok(state.unlocked >= 1);
   state = transition(state, { type: 'debug', operation: 'item', base: 'morningShears', itemLevel: 47 });
   state = transition(state, { type: 'debug', operation: 'card', key: 'mend', rank: 7 });
   state = transition(state, { type: 'debug', operation: 'upgradeCards' });
@@ -1257,6 +1282,61 @@ test('被涂改的梦册只提供一次全专精重置机会', () => {
   assert.equal(specializationSpent(state), 0);
   assert.equal(state.specializationResetTokens, 0);
   assert.equal(state.specializationResetQuestDone, true);
+});
+
+test('一次性章节插曲会发放足额旅币奖励', () => {
+  const gift = leaveHub(newRun(41031, 'manual'));
+  gift.phase = 'sideStory';
+  gift.sideStory = { id: 'giftBox' };
+  gift.hp = gift.maxHp - 20;
+  const opened = transition(gift, { type: 'sideStoryChoice', choice: 'open' });
+  assert.equal(opened.gold, gift.gold + 240);
+  assert.equal(opened.hp, gift.hp + 10);
+
+  const vendor = leaveHub(newRun(41032, 'manual'), 4);
+  vendor.phase = 'sideStory';
+  vendor.sideStory = { id: 'vendorBox' };
+  const declined = transition(vendor, { type: 'sideStoryChoice', choice: 'decline' });
+  assert.equal(declined.gold, vendor.gold + 400);
+});
+
+test('非战斗获得的技能加入出战后不会被撤离惩罚丢失', () => {
+  const state = newRun(41033, 'manual');
+  Object.assign(state, { phase: 'map', mapRow: 5, checkpointRow: -1 });
+  state.cardLibrary.push('mend+3');
+  state.cardLibrary.push('mend+3');
+  state.unsecuredCards.push('mend+3');
+  state.journeyCardDrops.push('mend+3');
+  const equipped = transition(state, { type: 'equipAcquired', kind: 'card', key: 'mend+3' });
+  assert.equal(equipped.deck.filter(key => key === 'mend+3').length, 1);
+  assert.equal(equipped.unsecuredCards.includes('mend+3'), false);
+  const returned = transition(equipped, { type: 'returnHub' });
+  assert.equal(returned.cardLibrary.filter(key => key === 'mend+3').length, 2);
+  assert.ok(returned.deck.includes('mend+3'));
+});
+
+test('非战斗获得的技能暂不加入时仍可能被撤离惩罚丢失', () => {
+  const state = newRun(41034, 'manual');
+  Object.assign(state, { phase: 'map', mapRow: 5, checkpointRow: -1 });
+  state.cardLibrary.push('mend+3');
+  state.unsecuredCards.push('mend+3');
+  state.journeyCardDrops.push('mend+3');
+  const returned = transition(state, { type: 'returnHub' });
+  assert.equal(returned.cardLibrary.includes('mend+3'), false);
+});
+
+test('非战斗获得的装备可在对比确认后立即装备并免于撤离遗失', () => {
+  const state = newRun(41035, 'manual');
+  Object.assign(state, { phase: 'map', mapRow: 5, checkpointRow: -1 });
+  const item = { id: 'gear-3', base: 'morningShears', itemLevel: 3, rarity: '普通', affixes: [], skill: null, skillLevel: 0 };
+  state.inventory.push(item);
+  state.unsecuredLoot.push(item.id);
+  state.journeyNewItems.push(item.id);
+  state.nextItemId = 4;
+  const equipped = transition(state, { type: 'equipAcquired', kind: 'gear', key: item.id });
+  assert.equal(equipped.equipment.weapon, item.id);
+  const returned = transition(equipped, { type: 'returnHub' });
+  assert.ok(itemFor(returned, item.id));
 });
 
 test('一键换装在基础强度接近时优先当前角色专精词条', () => {

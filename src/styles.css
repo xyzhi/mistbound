@@ -222,6 +222,11 @@ button:focus:not(:focus-visible) { outline: none; }
 .acquisition-modal > .eyebrow { position: relative; z-index: 2; color: #dfc978; }
 .acquisition-modal > h2 { position: relative; z-index: 2; margin: 7px 0 6px; font-family: Georgia, "Songti SC", serif; font-size: 32px; line-height: 1.15; }
 .acquisition-modal > p { position: relative; z-index: 2; margin: 0 auto 18px; max-width: 520px; color: #aeb7ae; font-size: 11px; line-height: 1.6; }
+.acquisition-risk { position: relative; z-index: 2; margin: 0 auto 12px; padding: 9px 11px; max-width: 520px; display: flex; align-items: center; gap: 9px; color: #f2d39b; border: 1px solid rgba(222, 173, 91, .42); background: rgba(87, 54, 20, .28); text-align: left; }
+.acquisition-risk > svg { flex: 0 0 auto; width: 18px; height: 18px; }
+.acquisition-risk > span { display: grid; gap: 2px; }
+.acquisition-risk strong { font-size: 11px; }
+.acquisition-risk small { color: #c9bda9; font-size: 9px; line-height: 1.45; }
 .acquisition-radiance { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .acquisition-radiance::before, .acquisition-radiance::after { content: ''; position: absolute; left: 50%; top: 47%; width: 120px; height: 120px; border: 1px solid rgba(231,210,132,.52); transform: translate(-50%, -50%) rotate(45deg); animation: acquisition-ring 1.25s ease-out both; }
 .acquisition-radiance::after { width: 86px; height: 86px; border-color: rgba(154,207,181,.42); animation-delay: .14s; }
@@ -239,8 +244,14 @@ button:focus:not(:focus-visible) { outline: none; }
 .acquisition-card > small { color: #aeb7ae; font-size: 9px; }
 .acquisition-gears { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
 .acquisition-gear { min-width: 0; display: grid; gap: 5px; opacity: 0; animation: acquisition-item-in .55s var(--reveal-delay) cubic-bezier(.2,.76,.24,1.15) both; }
-.acquisition-gear .gear-card { width: 100%; pointer-events: none; }
+.acquisition-gear .gear-card { width: 100%; }
 .acquisition-gear > small { color: #aeb7ae; font-size: 9px; }
+.acquisition-item-actions { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.acquisition-item-actions button { min-width: 0; min-height: 38px; padding: 7px 8px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; color: #dfe9df; border: 1px solid rgba(154, 207, 181, .35); background: #182722; font-size: 10px; font-weight: 800; }
+.acquisition-item-actions button svg { flex: 0 0 auto; width: 14px; height: 14px; }
+.acquisition-item-actions button.selected { color: #effadf; border-color: rgba(190, 225, 144, .72); background: #28402c; }
+.acquisition-item-actions button.risk { color: #d6c8b8; border-color: rgba(213, 167, 112, .3); background: #29231d; }
+.acquisition-item-actions button.risk.selected { color: #f1d2aa; border-color: rgba(222, 173, 91, .68); background: #49341f; }
 .acquisition-modal.is-single .acquisition-gears { width: min(260px, 100%); margin: 0 auto; grid-template-columns: 1fr; }
 .acquisition-accept { position: relative; z-index: 2; width: min(300px, 100%); min-height: 48px; margin-top: 20px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
 .acquisition-accept svg { width: 18px; height: 18px; }
@@ -1499,5 +1510,6 @@ button:focus:not(:focus-visible) { outline: none; }
   .acquisition-cards { gap: 7px; }
   .acquisition-card .game-card.compact { width: 124px; height: 176px; }
   .acquisition-gears { grid-template-columns: 1fr; }
+  .acquisition-item-actions { grid-template-columns: 1fr; }
   .acquisition-accept { margin-top: 14px; }
 }
