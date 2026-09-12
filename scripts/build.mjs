@@ -2,8 +2,13 @@ import { build } from 'vite';
 import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
+const cheatsEnabled = process.env.MISTBOUND_ENABLE_CHEATS !== '0';
+
 await build({
   base: './',
+  define: {
+    __MISTBOUND_CHEATS_ENABLED__: JSON.stringify(cheatsEnabled),
+  },
   build: {
     target: ['es2017', 'chrome61'],
     cssTarget: ['chrome61', 'safari18.4'],

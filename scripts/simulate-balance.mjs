@@ -39,7 +39,9 @@ function settle(state, mode) {
   }
   let resolutions = 0;
   while (!['map', 'lost'].includes(next.phase) && resolutions++ < 10) {
-    if (next.phase === 'reward') {
+    if (next.phase === 'mainStory') {
+      next = transition(next, { type: 'mainStoryContinue' });
+    } else if (next.phase === 'reward') {
       next = transition(next, { type: 'reward', key: next.choices[0] });
     } else if (next.phase === 'mystery') {
       next = transition(next, { type: 'mystery' });
@@ -64,8 +66,10 @@ function simulate(seed, difficulty, character, useGear, mode) {
   let state = newRun(seed, mode, difficulty, character);
   if (!useGear) state.equipment = { weapon: null, armor: null, bag: null, scarf: null, charm: null, decor: null };
   state = transition(state, { type: 'depart', stage: 0 });
+  state = settle(state, mode);
   const map = buildChapterMap(0, state.mapSeed);
-  while (state.phase !== 'lost' && state.mapRow < TARGET_ROW) {
+  let routeActions = 0;
+  while (state.phase !== 'lost' && state.mapRow < TARGET_ROW && routeActions++ < TARGET_ROW * 4 + 20) {
     const previous = map.find(node => node.id === state.currentNode);
     const available = state.mapRow < 0 ? map.filter(node => node.row === 0) : map.filter(node => previous?.links.includes(node.id));
     const target = available.toSorted((a, b) => {

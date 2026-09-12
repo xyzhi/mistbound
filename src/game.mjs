@@ -1,11 +1,22 @@
-export const VERSION = 42;
+export const CHEATS_ENABLED = typeof __MISTBOUND_CHEATS_ENABLED__ === 'undefined' || __MISTBOUND_CHEATS_ENABLED__;
+export const VERSION = 44;
 export const MEMORY_COOLDOWN_STEPS = 15;
 export const SAVE_KEY = 'goodnight-next-stop.run.v8';
 export const CARD_RANK_GROWTH = .34;
+export const DUAL_STAT_RANK_TAX_PER_LEVEL = 1.5;
+export const WEAKPOINT_DAMAGE_PER_LAYER = 4;
 export const SPECIALIZATION_UNLOCK_STAGE = 1;
 export const MAX_SPECIALIZATION_POINTS = 30;
 export const DISORDER_GOLD_LOSS_PERCENT = 20;
 const BATTLE_GOLD_SCALE = 1.2;
+const AUTO_LOADOUT_CARD_PRIORITY = { focus: 32 };
+export const BLACK_MARKET_RANDOM_CARD_PRICES = [75, 105, 135, 165, 195, 225];
+export const BLACK_MARKET_SHOWN_CARD_PRICES = [80, 110, 145, 175, 210, 240];
+export const BLACK_MARKET_GEAR_PRICES = [100, 140, 180, 220, 260, 300];
+export function reviveCost(stateOrLevel) {
+  const level = typeof stateOrLevel === 'number' ? stateOrLevel : stateOrLevel?.level;
+  return 60 + Math.max(1, level || 1) * 20;
+}
 export function disorderGoldLoss(gold) {
   return Math.ceil(Math.max(0, gold || 0) * DISORDER_GOLD_LOSS_PERCENT / 100);
 }
@@ -17,43 +28,43 @@ export const DIFFICULTIES = {
 export const CARDS = {
   slash: { name: '轻声问候', school: '倾听', type: 'attack', cost: 1, damage: 7, icon: 'heart', flavor: '一句问候，是故事愿意开始的地方。' },
   guard: { name: '深呼吸', school: '陪伴', type: 'skill', cost: 1, block: 6, icon: 'wind', flavor: '先让呼吸慢下来。' },
-  mark: { name: '认真倾听', school: '倾听', type: 'spell', cost: 1, mark: 3, block: 1, icon: 'target', flavor: '没有被听见的话，会留在梦里。' },
+  mark: { name: '认真倾听', school: '倾听', type: 'spell', cost: 1, mark: 3, block: 2, icon: 'target', flavor: '没有被听见的话，会留在梦里。' },
   heavy: { name: '说出真心话', school: '倾听', type: 'attack', cost: 2, damage: 17, icon: 'sparkles', flavor: '真话很重，也足以推开一扇门。' },
   focus: { name: '整理思绪', school: '清醒梦', type: 'skill', cost: 0, energy: 1, exhaust: true, icon: 'sparkles', flavor: '把纷乱的念头一件件放好。' },
-  riposte: { name: '我在这里', school: '陪伴', type: 'attack', cost: 1, damage: 5, block: 5, icon: 'heart', flavor: '回应本身，就能让梦安静一点。' },
-  leech: { name: '热可可', school: '料理', type: 'attack', cost: 1, damage: 6, heal: 4, icon: 'heart', flavor: '杯沿的热气替你说了没关系。' },
+  riposte: { name: '我在这里', school: '陪伴', type: 'attack', cost: 1, damage: 5, block: 4, dualStat: true, icon: 'heart', flavor: '回应本身，就能让梦安静一点。' },
+  leech: { name: '热可可', school: '料理', type: 'attack', cost: 1, damage: 6, heal: 3, dualStat: true, icon: 'heart', flavor: '杯沿的热气替你说了没关系。' },
   quick: { name: '沿途来信', school: '书信', type: 'attack', cost: 1, damage: 5, draw: 1, icon: 'wind', flavor: '邮戳来自一个还没抵达的地方。' },
   nova: { name: '再次确认', school: '倾听', type: 'attack', cost: 2, damage: 14, hits: 2, icon: 'target', flavor: '重要的话，值得再问一次。' },
   fortify: { name: '安静陪伴', school: '陪伴', type: 'skill', cost: 1, block: 10, icon: 'shield', flavor: '不急着回答，也是一种回答。' },
-  echo: { name: '旧日回声', school: '回忆', type: 'spell', cost: 1, mark: 4, draw: 1, icon: 'moon', flavor: '记忆会沿着熟悉的声音回来。' },
+  echo: { name: '旧日回声', school: '回忆', type: 'spell', cost: 1, mark: 4, markedMarkBonusPct: .5, draw: 1, icon: 'moon', flavor: '记忆会沿着熟悉的声音回来。' },
   mend: { name: '蜂蜜牛奶', school: '料理', type: 'skill', cost: 1, heal: 10, exhaust: true, icon: 'heart', flavor: '甜度刚好，不需要坚强。' },
   risk: { name: '清醒梦', school: '清醒梦', type: 'spell', cost: 0, draw: 2, self: 3, exhaust: true, icon: 'moon', flavor: '知道自己在梦里，也不代表不会害怕。' },
-  tea: { name: '晚安花茶', school: '料理', type: 'skill', cost: 1, block: 11, heal: 3, icon: 'heart', flavor: '花瓣沉底以后，夜也轻了一点。' },
-  listen: { name: '慢慢说', school: '倾听', type: 'spell', cost: 1, mark: 4, draw: 1, icon: 'target', flavor: '今晚没有人催你。' },
+  tea: { name: '晚安花茶', school: '料理', type: 'skill', cost: 1, block: 11, heal: 3, dualStat: true, icon: 'heart', flavor: '花瓣沉底以后，夜也轻了一点。' },
+  listen: { name: '慢慢说', school: '倾听', type: 'spell', cost: 1, mark: 5, draw: 1, icon: 'target', flavor: '今晚没有人催你。' },
   postcard: { name: '未寄明信片', school: '书信', type: 'attack', cost: 1, damage: 14, draw: 1, icon: 'wind', flavor: '背面写着一句迟到很久的话。' },
   blanket: { name: '留灯的房间', school: '陪伴', type: 'skill', cost: 2, block: 38, retain: true, icon: 'shield', flavor: '这张房卡不会在天亮前失效。' },
   nightRide: { name: '夜路电台', school: '回忆', type: 'attack', cost: 2, damage: 8, hits: 2, draw: 1, icon: 'moon', flavor: '同一首歌，在两段人生里响起。' },
   kitchenLight: { name: '厨房还亮着', school: '料理', type: 'skill', cost: 1, block: 11, energy: 1, icon: 'flame', flavor: '总有人为晚归的人留一盏灯。' },
   unsent: { name: '没有寄出的信', school: '书信', type: 'attack', cost: 2, damage: 26, retain: true, icon: 'wind', flavor: '它一直留在手里，等待合适的时刻。' },
-  photoAlbum: { name: '旧相册', school: '回忆', type: 'spell', cost: 1, mark: 4, draw: 2, exhaust: true, icon: 'moon', flavor: '翻到最后一页时，照片里多了一个人。' },
+  photoAlbum: { name: '旧相册', school: '回忆', type: 'spell', cost: 1, mark: 5, draw: 2, exhaust: true, icon: 'moon', flavor: '翻到最后一页时，照片里多了一个人。' },
   morningCall: { name: '明早叫醒我', school: '清醒梦', type: 'attack', cost: 3, damage: 65, exhaust: true, icon: 'sparkles', flavor: '愿意醒来，就是梦最好的结局。' },
-  stayAwhile: { name: '再坐一会儿', school: '陪伴', type: 'skill', cost: 2, block: 26, heal: 11, retain: true, icon: 'shield', flavor: '路还很长，我们不必现在出发。' },
+  stayAwhile: { name: '再坐一会儿', school: '陪伴', type: 'skill', cost: 2, block: 26, heal: 11, dualStat: true, retain: true, icon: 'shield', flavor: '路还很长，我们不必现在出发。' },
   lucidDoor: { name: '推开梦门', school: '清醒梦', type: 'spell', cost: 0, energy: 2, self: 4, exhaust: true, icon: 'sparkles', flavor: '门后未必安全，但一定通向更深处。' },
-  goodnight: { name: '好好睡一觉', school: '料理', type: 'attack', cost: 2, damage: 27, heal: 16, exhaust: true, icon: 'heart', flavor: '剩下的事，可以交给明天。' },
-  steadyTea: { name: '温茶在手', school: '料理', type: 'skill', cost: 1, block: 11, heal: 16, icon: 'heart', art: 'tea', flavor: '温度不高，却足够陪你走过这一段。' },
+  goodnight: { name: '好好睡一觉', school: '料理', type: 'attack', cost: 2, damage: 27, heal: 16, dualStat: true, exhaust: true, icon: 'heart', flavor: '剩下的事，可以交给明天。' },
+  steadyTea: { name: '温茶在手', school: '料理', type: 'skill', cost: 1, block: 11, heal: 16, dualStat: true, icon: 'heart', art: 'tea', flavor: '温度不高，却足够陪你走过这一段。' },
   openingNote: { name: '开场白', school: '倾听', type: 'attack', cost: 1, damage: 6, mark: 1, icon: 'target', art: 'slash', flavor: '先开口，故事才有继续的可能。' },
   rainPromise: { name: '雨中约定', school: '书信', type: 'attack', cost: 1, damage: 8, hits: 2, retain: true, icon: 'wind', art: 'postcard', flavor: '被雨打湿的字，反而记得更牢。' },
-  sharedUmbrella: { name: '共撑一伞', school: '陪伴', type: 'skill', cost: 1, block: 15, heal: 4, icon: 'shield', art: 'fortify', flavor: '伞不大，但两个人刚好。' },
+  sharedUmbrella: { name: '共撑一伞', school: '陪伴', type: 'skill', cost: 1, block: 12, heal: 2, dualStat: true, icon: 'shield', art: 'fortify', flavor: '伞不大，但两个人刚好。' },
   returnedLetter: { name: '回信', school: '书信', type: 'attack', cost: 1, damage: 15, recycle: 1, icon: 'wind', art: 'quick', flavor: '有些话绕了一圈，终于回到手里。' },
   pageMarker: { name: '夹页微光', school: '回忆', type: 'skill', cost: 1, block: 14, nextBlock: 10, icon: 'moon', art: 'photoAlbum', flavor: '合上书以后，微光仍留在那一页。' },
   tideTurn: { name: '潮汐转身', school: '清醒梦', type: 'attack', cost: 1, damage: 15, blockDamage: .65, icon: 'sparkles', art: 'risk', flavor: '守住的每一步，也能成为向前的力量。' },
   warmThermos: { name: '保温杯', school: '料理', type: 'skill', cost: 1, heal: 15, energy: 1, icon: 'heart', art: 'mend', flavor: '拧开杯盖，旅途就短了一点。' },
-  exposeTruth: { name: '看清真相', school: '倾听', type: 'spell', cost: 2, mark: 9, markBurst: 1, icon: 'target', art: 'listen', flavor: '真相被说出来时，弱点也无处躲藏。' },
-  nightWatch: { name: '守到天明', school: '陪伴', type: 'attack', cost: 2, damage: 41, execute: 1.5, block: 22, icon: 'shield', art: 'stayAwhile', flavor: '最难熬的时刻，总有人没有离开。' },
+  exposeTruth: { name: '看清真相', school: '倾听', type: 'spell', cost: 2, mark: 10, markBurst: 5, icon: 'target', art: 'listen', flavor: '真相被说出来时，弱点也无处躲藏。' },
+  nightWatch: { name: '守到天明', school: '陪伴', type: 'attack', cost: 2, damage: 36, execute: 1.5, block: 18, dualStat: true, icon: 'shield', art: 'stayAwhile', flavor: '最难熬的时刻，总有人没有离开。' },
   finalPlatform: { name: '末站回响', school: '回忆', type: 'attack', cost: 2, damage: 54, hits: 2, icon: 'moon', art: 'nightRide', flavor: '列车驶过以后，站台仍记得所有名字。' },
   rewriteEnding: { name: '改写结局', school: '清醒梦', type: 'spell', cost: 1, damage: 68, draw: 2, exhaust: true, icon: 'sparkles', art: 'lucidDoor', flavor: '醒来以前，结局仍有一次重写的机会。' },
-  lastWarmth: { name: '最后热饮', school: '料理', type: 'skill', cost: 2, heal: 61, block: 41, cleanse: true, exhaust: true, icon: 'heart', art: 'goodnight', flavor: '喝完这一杯，就一起走到清晨。' },
-  silentAnswer: { name: '无声回答', school: '倾听', type: 'attack', cost: 2, damage: 82, consumeMark: 2, icon: 'target', art: 'heavy', flavor: '没有说出口的答案，也足够坚定。' },
+  lastWarmth: { name: '最后热饮', school: '料理', type: 'skill', cost: 2, heal: 61, block: 41, dualStat: true, cleanse: true, exhaust: true, icon: 'heart', art: 'goodnight', flavor: '喝完这一杯，就一起走到清晨。' },
+  silentAnswer: { name: '无声回答', school: '倾听', type: 'attack', cost: 2, damage: 82, consumeMark: 8, icon: 'target', art: 'heavy', flavor: '没有说出口的答案，也足够坚定。' },
   keepTheLight: { name: '灯一直亮', school: '陪伴', type: 'skill', cost: 2, block: 75, nextBlock: 41, retain: true, icon: 'flame', art: 'kitchenLight', flavor: '只要灯还亮着，终点就不会太远。' },
   homeboundMail: { name: '归途来信', school: '书信', type: 'attack', cost: 1, damage: 61, recycle: 2, icon: 'wind', art: 'unsent', flavor: '信里没有地址，因为收信人已经在回家的路上。' },
   doubt: { name: '杂念', school: '失序', type: 'spell', cost: 1, self: 2, exhaust: true, icon: 'moon', art: 'risk', flavor: '越想甩开，越会缠住脚步。' },
@@ -225,10 +236,11 @@ export const STARTER = ['slash', 'slash', 'slash', 'slash', 'guard', 'guard', 'g
 export const REWARDS = ['riposte', 'leech', 'quick', 'fortify', 'steadyTea', 'openingNote', 'nova', 'tea', 'listen', 'nightRide', 'rainPromise', 'sharedUmbrella', 'echo', 'postcard', 'photoAlbum', 'unsent', 'returnedLetter', 'pageMarker', 'risk', 'kitchenLight', 'stayAwhile', 'lucidDoor', 'tideTurn', 'warmThermos', 'mend', 'blanket', 'morningCall', 'goodnight', 'exposeTruth', 'nightWatch', 'finalPlatform', 'rewriteEnding', 'lastWarmth', 'silentAnswer', 'keepTheLight', 'homeboundMail'];
 export const CORE_REWARDS = { uncle: 'mark', gaigai: 'mend', xiaoshuai: 'fortify' };
 export const MYSTERY_STATIONS = [
-  { type: 'event', label: '沿途事件', weight: 24 },
-  { type: 'camp', label: '亮灯休息站', weight: 20 },
-  { type: 'memory', label: '整理回忆站', weight: 40 },
+  { type: 'event', label: '沿途事件', weight: 22 },
+  { type: 'camp', label: '亮灯休息站', weight: 18 },
+  { type: 'memory', label: '整理回忆站', weight: 36 },
   { type: 'loadout', label: '牌组整备站', weight: 6 },
+  { type: 'blackMarket', label: '夜路黑市', weight: 8 },
   { type: 'negative', label: '失序路段', weight: 10 },
 ];
 export const SIDE_STORIES = {
@@ -377,7 +389,7 @@ const DROPPABLE_CARDS = [...new Set([...REWARDS, ...Object.values(CORE_REWARDS)]
 export const CHARACTERS = {
   uncle: {
     name: '大叔', role: '夜班店长', trait: '认真听你说',
-    description: '卡牌显示自身的弱点层数；每回合第一次发现弱点时，在卡面层数之外额外增加 30%（向上取整），并抽 1 张牌。',
+    description: '每回合第一次使用发现弱点的牌后，抽 1 张牌。',
     schools: ['倾听', '书信'], style: '先强化伤害，再连续出牌',
     maxHp: 70, starter: ['slash', 'slash', 'slash', 'guard', 'guard', 'mark', 'mark', 'heavy', 'quick', 'focus'],
   },
@@ -447,16 +459,16 @@ export const SPECIALIZATIONS = {
     path('反击', '守住每一次冲击，让敌人的力量反过来伤到自己。', '#8db8a0', [
       node('xCounterKeep', '缝牢边角', 5, 0, '回合结束时额外保留 3% 护盾。', { retainedBlockPct: .03 }),
       node('xCounterReflect', '顺势回针', 5, 3, '护盾反击比例提高 3%。', { reflectionPct: .03 }),
-      node('xCounterMend', '越打越牢', 4, 7, '受到被护盾抵挡的攻击后获得 1 点下回合护盾。', { counterNextBlock: 1 }),
-      node('xCounterEdge', '藏在针脚里', 5, 11, '每次反击额外造成 1 点伤害。', { counterFlatDamage: 1 }),
-      node('xCounterStorm', '针脚如雨', 1, 16, '多段攻击逐段触发反击，每回合最多触发 3 次。', { counterMastery: true }),
+      node('xCounterMend', '越打越牢', 4, 7, '受到被护盾抵挡的攻击后获得 3 点下回合护盾并回复 2 点生命。', { counterNextBlock: 3, counterHeal: 2 }),
+      node('xCounterEdge', '藏在针脚里', 5, 11, '每次反击额外造成 4 点伤害。', { counterFlatDamage: 4 }),
+      node('xCounterStorm', '针脚如雨', 1, 16, '多段攻击逐段触发反击，每回合最多触发 3 次，并使护盾穿透降低 8%。', { counterMastery: true, guardPierceReduction: .08 }),
     ]),
     path('潮汐', '把护盾主动推向敌人，在攻守之间来回转换。', '#68b4bf', [
       node('xTidePower', '潮声推近', 5, 0, '护盾追加伤害比例提高 5%。', { blockDamagePct: .05 }),
-      node('xTideGuard', '退潮留痕', 5, 3, '有护盾时使用攻击牌，获得 1 点护盾。', { guardedAttackBlock: 1 }),
+      node('xTideGuard', '退潮留痕', 5, 3, '有护盾时使用攻击牌，获得 2 点护盾。', { guardedAttackBlock: 2 }),
       node('xTideStrike', '浪头转身', 4, 7, '有护盾时，攻击额外造成 2 点伤害。', { guardedFlatDamage: 2 }),
-      node('xTideReturn', '潮水归岸', 5, 11, '护盾造成追加伤害后，保留其中 3% 到下回合。', { tideNextBlockPct: .03 }),
-      node('xTideMoon', '月引潮生', 1, 16, '攻击消耗当前护盾的 30%，追加消耗量 200% 的伤害。', { tideMastery: true }),
+      node('xTideReturn', '潮水归岸', 5, 11, '护盾造成追加伤害后，保留其中 5% 到下回合。', { tideNextBlockPct: .05 }),
+      node('xTideMoon', '月引潮生', 1, 16, '攻击消耗当前护盾的 30%，追加消耗量 200% 的伤害，并使护盾穿透降低 8%。', { tideMastery: true, guardPierceReduction: .08 }),
     ]),
     path('清醒梦', '承受可控的代价，换取能量、抽牌与低生命爆发。', '#a79ac9', [
       node('xLucidPain', '知道是梦', 5, 0, '清醒梦牌的自伤降低 8%。', { selfDamageReductionPct: .08 }),
@@ -585,8 +597,8 @@ export const AFFIX_LABELS = {
 };
 export const ITEM_TIERS = [
   { name: '普通底材', minLevel: 1, scale: 1 },
-  { name: '进阶底材', minLevel: 21, scale: 2.6 },
-  { name: '精英底材', minLevel: 41, scale: 6 },
+  { name: '进阶底材', minLevel: 21, scale: 2.2 },
+  { name: '精英底材', minLevel: 41, scale: 4 },
 ];
 export const SKILL_UNLOCKS = {
   riposte: 0, leech: 0, quick: 0, fortify: 0, mend: 0, openingNote: 0,
@@ -690,7 +702,8 @@ export function itemBaseStats(item) {
   const level = Math.max(1, item.itemLevel || 1);
   const tier = itemTier(item);
   const withinTier = (level - tier.minLevel) % 20;
-  const scale = tier.scale * (1 + withinTier * .025);
+  const rarityScale = item.rarity === '传奇' ? 1.35 : 1;
+  const scale = tier.scale * (1 + withinTier * .02) * rarityScale;
   return {
     attack: Math.round((base.attack || 0) * scale),
     block: Math.round((base.block || 0) * scale),
@@ -864,6 +877,61 @@ function rollItem(s, base, boosted = false) {
   const skillLevel = skill ? Math.min(10, 1 + Math.floor((itemLevel - 1) / 12) + (rarityIndex >= 2 ? 1 : 0)) : 0;
   return { id: `gear-${s.nextItemId++}`, base, itemLevel, rarity: rarity.name, affixes, skill, skillLevel };
 }
+function rollBlackMarketItem(s) {
+  const basePool = CHAPTER_LOOT[s.stage] || CHAPTER_LOOT[0];
+  const base = basePool[Math.floor(random(s) * basePool.length)];
+  const depth = Math.max(0, s.mapRow || 0);
+  const itemLevel = Math.min(60, Math.max(1, s.stage * 10 + 5 + Math.floor(depth / 5) + Math.floor(random(s) * 3)));
+  const rarity = random(s) < .15 ? '传奇' : '稀有';
+  const rarityIndex = rarity === '传奇' ? 3 : 2;
+  const affixes = rollAffixes(s, RARITIES[rarityIndex].affixes, itemLevel);
+  const unlockedSkills = REWARDS.filter(key => (SKILL_UNLOCKS[key] ?? 0) <= s.stage);
+  const preferred = unlockedSkills.filter(key => CHARACTERS[s.character]?.schools.includes(CARDS[key].school));
+  const skillPool = preferred.length && random(s) < .7 ? preferred : unlockedSkills;
+  const innateSkill = ITEMS[base].skill;
+  const skill = innateSkill
+    ? (random(s) < equipmentSkillDropScale(s.stage, false) ? innateSkill : null)
+    : (random(s) < equipmentRandomSkillChance(rarity) ? skillPool[Math.floor(random(s) * skillPool.length)] : null);
+  const skillLevel = skill ? Math.min(10, 1 + Math.floor((itemLevel - 1) / 12) + 1) : 0;
+  return { id: `gear-${s.nextItemId++}`, base, itemLevel, rarity, affixes, skill, skillLevel };
+}
+export function blackMarketGearPrice(stage, item) {
+  const base = BLACK_MARKET_GEAR_PRICES[Math.max(0, Math.min(5, stage || 0))];
+  const rarityScale = item?.rarity === '传奇' ? 1.5 : 1;
+  const skillScale = item?.skill ? 1.25 : 1;
+  return Math.round(base * rarityScale * skillScale);
+}
+export function blackMarketCardRanks(mapRow = 0) {
+  const step = Math.max(1, Math.min(MAP_STEPS, (Number.isInteger(mapRow) ? mapRow : 0) + 1));
+  if (step <= 20) return { shown: 2, random: 3 };
+  if (step <= 40) return { shown: 3, random: 4 };
+  return { shown: 4, random: 5 };
+}
+export function blackMarketCardPrice(stage, rank, kind = 'card') {
+  const chapter = Math.max(0, Math.min(5, stage || 0));
+  const randomCard = kind === 'randomCard';
+  const basePrice = (randomCard ? BLACK_MARKET_RANDOM_CARD_PRICES : BLACK_MARKET_SHOWN_CARD_PRICES)[chapter];
+  const baseRank = randomCard ? 3 : 2;
+  const rankValue = 1 + CARD_RANK_GROWTH * (Math.max(1, Math.min(10, rank || 1)) - 1);
+  const baseValue = 1 + CARD_RANK_GROWTH * (baseRank - 1);
+  return Math.max(5, Math.round((basePrice * rankValue / baseValue) / 5) * 5);
+}
+function buildBlackMarketOffers(s) {
+  const stage = Math.max(0, Math.min(5, s.stage || 0));
+  const pool = shuffle(s, REWARDS.filter(key => (SKILL_UNLOCKS[key] ?? 0) === stage));
+  const ranks = blackMarketCardRanks(s.mapRow);
+  const randomCard = pool[0] || REWARDS[0];
+  const shownCards = Array.from({ length: 3 }, (_, index) => pool[index + 1] || pool[index % Math.max(1, pool.length)] || REWARDS[0]);
+  const item = rollBlackMarketItem(s);
+  return [
+    { id: 'random-card', kind: 'randomCard', key: rankedCardKey(randomCard, ranks.random), cost: blackMarketCardPrice(stage, ranks.random, 'randomCard'), label: '封蜡的高阶回忆' },
+    ...shownCards.map((shownCard, index) => {
+      const key = rankedCardKey(shownCard, ranks.shown);
+      return { id: `shown-card-${index + 1}`, kind: 'card', key, cost: blackMarketCardPrice(stage, ranks.shown, 'card'), label: card(key).name };
+    }),
+    { id: 'gear', kind: 'gear', item, cost: blackMarketGearPrice(stage, item), label: itemName(item) },
+  ];
+}
 export function equipmentDropCount(s) {
   const roll = random(s);
   if (s?.bossFight) return roll < .6 ? 3 : 2;
@@ -950,6 +1018,17 @@ export function skillRewardRank(s, key) {
   const encounterBonus = s?.bossFight ? 2 : s?.elite ? 1 : 0;
   return Math.min(10, 1 + (currentChapter - originChapter) * 2 + encounterBonus);
 }
+function applyDualStatRankTax(c, rank) {
+  const fields = ['damage', 'block', 'heal'].filter(field => c[field]);
+  const total = fields.reduce((sum, field) => sum + c[field], 0);
+  const tax = Math.min(Math.round((rank - 1) * DUAL_STAT_RANK_TAX_PER_LEVEL), total - fields.length);
+  const target = total - tax;
+  const shares = fields.map(field => ({ field, raw: c[field] * target / total }));
+  let assigned = shares.reduce((sum, share) => sum + Math.max(1, Math.floor(share.raw)), 0);
+  shares.sort((a, b) => (b.raw - Math.floor(b.raw)) - (a.raw - Math.floor(a.raw)));
+  for (let index = 0; assigned < target; index++, assigned++) shares[index % shares.length].raw += 1;
+  for (const share of shares) c[share.field] = Math.max(1, Math.floor(share.raw));
+}
 export function card(key) {
   const equipmentGranted = key.endsWith('~gear');
   const rank = cardRank(key);
@@ -966,14 +1045,11 @@ export function card(key) {
     if (c.block) c.block = Math.round(c.block * multiplier);
     if (c.heal) c.heal = Math.round(c.heal * multiplier);
     if (c.nextBlock) c.nextBlock = Math.round(c.nextBlock * multiplier);
-    if (c.mark) c.mark += Math.ceil((rank - 1) * .7);
+    if (c.mark) c.mark = Math.round(c.mark * multiplier);
+    if (c.dualStat) applyDualStatRankTax(c, rank);
     if (c.energy && rank >= 8) c.energy += 1;
     if (c.draw && rank >= 6) c.draw += 1;
     if (c.self) c.self = Math.max(1, c.self - Math.floor(rank / 4));
-  }
-  if (baseKey === 'mark') {
-    c.mark = 3 + Math.floor((rank - 1) / 2);
-    c.block = rank;
   }
   if (baseKey === 'openingNote') c.mark = 1;
   return c;
@@ -983,6 +1059,7 @@ export function description(key) {
   if (c.damage) parts.push(`造成 ${c.damage}${c.hits ? ` × ${c.hits}` : ''} 点伤害`);
   if (c.block) parts.push(`获得 ${c.block} 点护盾`);
   if (c.mark) parts.push(`发现 ${c.mark} 层弱点`);
+  if (c.markedMarkBonusPct) parts.push(`目标原本已有弱点时，本次发现的弱点增加 ${Math.round(c.markedMarkBonusPct * 100)}%`);
   if (c.heal) parts.push(`回复 ${c.heal} 点生命`);
   if (c.energy) parts.push(`获得 ${c.energy} 点能量`);
   if (c.self) parts.push(`消耗 ${c.self} 点生命`);
@@ -990,7 +1067,7 @@ export function description(key) {
   if (c.nextBlock) parts.push(`下回合获得 ${c.nextBlock} 点护盾`);
   if (c.recycle) parts.push(`从弃牌堆取回 ${c.recycle} 张牌`);
   if (c.blockDamage) parts.push(`追加当前护盾 ${Math.round(c.blockDamage * 100)}% 的伤害`);
-  if (c.markBurst) parts.push('立即造成等同当前弱点层数的伤害，且不消耗弱点');
+  if (c.markBurst) parts.push(`立即按使用前已有的每层弱点造成 ${c.markBurst} 点伤害，且不消耗弱点`);
   if (c.consumeMark) parts.push(`每层弱点额外造成 ${c.consumeMark} 点伤害并全部消耗`);
   if (c.execute) parts.push(`敌人半血以下时伤害提高 ${Math.round((c.execute - 1) * 100)}%`);
   if (c.cleanse) parts.push('解除治疗压制与动摇');
@@ -1039,11 +1116,21 @@ export function intent(s) {
   const depth = Math.max(0, s.mapRow || 0);
   const difficulty = DIFFICULTIES[s.difficulty] || DIFFICULTIES.standard;
   const elitePressure = s.elite ? (s.stage === 0 ? .22 : .12) : 0;
-  const multiplier = (1 + s.stage * .08 + depth * difficulty.damageDepth + Math.max(0, s.turn - 1) * difficulty.turnDamage + elitePressure + (s.bossFight ? .22 : 0)) * difficulty.damage;
+  const initialMultiplier = (1 + s.stage * .08 + depth * difficulty.damageDepth + elitePressure + (s.bossFight ? .22 : 0)) * difficulty.damage;
+  const multiplier = initialMultiplier + Math.max(0, s.turn - 1) * difficulty.turnDamage * difficulty.damage;
   const offensive = ['attack', 'curse', 'dispel', 'charge'].includes(base.kind);
-  const value = offensive ? Math.max(1, Math.round(base.value * multiplier)) : base.value;
+  const defensive = ['guard', 'heal'].includes(base.kind);
+  const value = offensive
+    ? Math.max(1, Math.round(base.value * multiplier))
+    : defensive ? Math.max(1, Math.round(base.value * initialMultiplier)) : base.value;
   const pressureValue = Math.max(1, Math.round(base.value * multiplier));
   if (s.enemy?.charge) return { kind: 'chargedAttack', value: s.enemy.charge };
+  if (s.bossFight && s.stage === ENEMIES.length - 1) {
+    if (s.turn % 2 === 1) return { ...base, value };
+    if (s.turn % 4 === 0) return { kind: 'charge', value: Math.max(1, Math.round(pressureValue * 1.8)) };
+    if (s.turn % 6 === 0) return { kind: 'suppress', value: 2 };
+    return { kind: 'dispel', value: Math.max(1, Math.round(pressureValue * .7)) };
+  }
   if (s.stage >= 4 && s.turn % 5 === 0) return { kind: 'jam', value: 2 };
   if (s.stage >= 3 && s.turn % 4 === 3) return { kind: 'suppress', value: 2 };
   if (s.stage >= 2 && s.turn % 4 === 2) return { kind: 'dispel', value: Math.max(1, Math.round(pressureValue * .7)) };
@@ -1070,20 +1157,25 @@ function cardCombatContext(s, c) {
   const alternating = Boolean((mode === 'attack' && s.lastCardMode === 'heal') || (mode === 'heal' && s.lastCardMode === 'attack'));
   return { bonuses, stats, sameSchool, chain, mode, alternating };
 }
+function cardMarkGain(s, c) {
+  const baseMarkGain = c.mark || 0;
+  if (!baseMarkGain || !c.markedMarkBonusPct || (s.enemy?.mark || 0) <= 0) return baseMarkGain;
+  return baseMarkGain + Math.ceil(baseMarkGain * c.markedMarkBonusPct);
+}
 export function attackBreakdown(s, key) {
   const c = card(key);
   const context = cardCombatContext(s, c);
   const { bonuses, stats } = context;
-  const baseMarkGain = c.mark || 0;
-  const traitMarkBonus = baseMarkGain && s.character === 'uncle' && !s.traitUsed ? Math.ceil(baseMarkGain * .3) : 0;
-  const marksBeforeAttack = s.enemy.mark + baseMarkGain + traitMarkBonus;
+  const existingMarks = s.enemy.mark || 0;
+  const baseMarkGain = cardMarkGain(s, c);
+  const marksBeforeAttack = existingMarks + baseMarkGain;
   const gainedBlock = c.block ? c.block + stats.skillPower + (context.sameSchool ? bonuses.chainBlock || 0 : 0) : 0;
   const playerBlock = (s.block || 0) + gainedBlock;
   const warmthRetainedPct = Math.min(.4, Math.max(bonuses.warmthRetainPct || 0, bonuses.warmthMastery ? .4 : 0));
   const warmthSpent = c.damage && s.character === 'gaigai' ? Math.ceil((s.warmth || 0) * (1 - warmthRetainedPct)) : 0;
   const warmthDamage = Math.round(warmthSpent * (1 + (bonuses.warmthDamagePct || 0) + (bonuses.warmthMastery ? .25 : 0)));
   if (!c.damage) {
-    const standaloneBase = (c.markBurst ? marksBeforeAttack : 0) + (c.consumeMark ? marksBeforeAttack * c.consumeMark : 0);
+    const standaloneBase = (c.markBurst ? existingMarks * c.markBurst : 0) + (c.consumeMark ? marksBeforeAttack * c.consumeMark : 0);
     const standaloneSpecial = Math.round(standaloneBase * (1 + (bonuses.markSpecialPct || 0)));
     return { total: standaloneSpecial, normal: 0, weakpoint: standaloneSpecial, enemyBlock: s.enemy.block, marksAfter: c.consumeMark ? 0 : marksBeforeAttack, gainedBlock, playerBlockAfter: playerBlock, warmthSpent: 0, warmthDamage: 0, context };
   }
@@ -1112,12 +1204,12 @@ export function attackBreakdown(s, key) {
     const absorbed = Math.min(block, normalDamage);
     block -= absorbed;
     normal += normalDamage - absorbed;
-    if (index < availableMarks) weakpoint += availableMarks - index;
+    if (index < availableMarks) weakpoint += WEAKPOINT_DAMAGE_PER_LAYER;
   }
   const remainingMarks = c.consumeMark ? marksBeforeAttack : Math.max(0, marksBeforeAttack - hits);
   const blockDamageRatio = (c.blockDamage || 0) + (c.blockDamage ? (bonuses.blockDamagePct || 0) + stats.tidePower * .02 : 0);
   const blockDamage = Math.round(playerBlock * blockDamageRatio);
-  const markSpecialBase = (c.markBurst ? remainingMarks : 0) + (c.consumeMark ? marksBeforeAttack * c.consumeMark : 0);
+  const markSpecialBase = (c.markBurst ? existingMarks * c.markBurst : 0) + (c.consumeMark ? marksBeforeAttack * c.consumeMark : 0);
   const insightDetonate = bonuses.insightMastery && !c.consumeMark && marksBeforeAttack >= 12;
   const markSpecialDamage = Math.round((markSpecialBase + (insightDetonate ? marksBeforeAttack * 2 : 0)) * (1 + (bonuses.markSpecialPct || 0)));
   const shieldSpent = bonuses.tideMastery ? Math.floor(playerBlock * .3) : 0;
@@ -1150,17 +1242,23 @@ function protectedCoreCard(s, key) {
 export function sideCardTurnInCandidates(s, rule = {}) {
   const activeCounts = new Map();
   for (const key of s?.deck || []) activeCounts.set(key, (activeCounts.get(key) || 0) + 1);
+  const copyCounts = new Map();
+  for (const key of s?.cardLibrary || []) copyCounts.set(key, (copyCounts.get(key) || 0) + 1);
   return (s?.cardLibrary || [])
     .map((key, index) => {
       const active = (activeCounts.get(key) || 0) > 0;
       if (active) activeCounts.set(key, activeCounts.get(key) - 1);
-      return { key, index, active, fresh: (s?.unsecuredCards || []).includes(key) };
+      return { key, index, active, copies: copyCounts.get(key) || 1, fresh: (s?.unsecuredCards || []).includes(key) };
     })
     .filter(item => !item.key.endsWith('~gear') && CARDS[cardBaseKey(item.key)])
     .filter(item => cardRank(item.key) >= (rule.minRank || 1))
     .filter(item => !rule.school || CARDS[cardBaseKey(item.key)].school === rule.school)
     .filter(item => !protectedCoreCard(s, item.key))
-    .sort((a, b) => Number(b.fresh) - Number(a.fresh) || Number(a.active) - Number(b.active) || cardRank(a.key) - cardRank(b.key));
+    .sort((a, b) => Number(a.active) - Number(b.active)
+      || cardRank(a.key) - cardRank(b.key)
+      || b.copies - a.copies
+      || card(a.key).name.localeCompare(card(b.key).name, 'zh-CN')
+      || a.index - b.index);
 }
 export function sideGearTurnInCandidates(s) {
   const equipped = new Set(Object.values(s?.equipment || {}).filter(Boolean));
@@ -1446,7 +1544,7 @@ function removeGearByIds(s, ids) {
   s.lastLoots = (s.lastLoots || []).filter(id => !ids.includes(id));
   return selected;
 }
-function beginBattle(s) {
+export function beginBattle(s) {
   s.phase = 'combat'; s.turn = 1; s.energy = 3; s.weak = 0;
   s.warmth = 0; s.traitUsed = false;
   s.lastCardSchool = null; s.lastCardMode = null; s.schoolChain = 0; s.rhythmTriggers = 0; s.recycleTriggered = false; s.healDrawTriggered = false; s.lucidFocusTriggered = false; s.lucidCharge = 0; s.counterTriggers = 0;
@@ -1468,7 +1566,9 @@ function beginBattle(s) {
   const difficulty = DIFFICULTIES[s.difficulty] || DIFFICULTIES.standard;
   const chapterScale = [1, 1.25, 1.6, 2.05, 2.65, 3.4][s.stage] || 1;
   const depthScale = chapterScale * (1 + Math.max(0, s.mapRow) * difficulty.hpDepth);
-  const rankScale = s.bossFight ? 1.65 : s.elite ? (s.stage === 0 ? 1.5 : 1.3) : 1;
+  const rankScale = s.bossFight
+    ? 1.65 + s.stage * .25 + Math.max(0, s.stage - 3) * 1.9
+    : s.elite ? (s.stage === 0 ? (s.difficulty === 'challenge' ? 1.875 : 1.5) : 1.3) : 1;
   const foe = enemyFor(s);
   const maxHp = Math.round(foe.hp * depthScale * rankScale * difficulty.hp);
   s.enemy = { hp: maxHp, maxHp, block: 0, mark: 0, charge: 0 };
@@ -1490,7 +1590,7 @@ export function newRun(seed = Date.now() >>> 0, battleMode = 'manual', difficult
   const selectedCharacter = CHARACTERS[character] ? character : 'uncle';
   const startingHp = CHARACTERS[selectedCharacter].maxHp || 70;
   const starterDeck = [...CHARACTERS[selectedCharacter].starter];
-  const s = { version: VERSION, seed: seed >>> 0, mapSeed: seed >>> 0, character: selectedCharacter, warmth: 0, traitUsed: false, coreRewardMisses: 0, specializations: {}, specializationBonusPoints: 0, specializationSeen: false, specializationResetTokens: 0, specializationResetQuestDone: false, specializationStoryRewards: [], magicHouseCooldowns: {}, mysteryResult: null, lastMysteryResult: null, mainStory: null, mainStorySeen: [], sideStory: null, sidePromises: [], sideStorySeen: [], sideStoryQueue: [], sideChapterTriggers: [0, 0, 0, 0, 0, 0], criticalSideQuests: criticalQuestDefaults(), pendingScene: null, sideBuffs: [], sideBattleFirstStrike: 0, namelessClues: [], featureSeen: { bag: false, workshop: false, guests: false }, difficulty: selectedDifficulty, battleMode: battleMode === 'manual' ? 'manual' : 'auto', tutorialDone: false, phase: 'hub', stage: 0, unlocked: 0, clears: [0, 0, 0, 0, 0, 0], guestRewards: [false, false, false, false, false, false], chapterCheckpoints: [-1, -1, -1, -1, -1, -1], level: 1, xp: 0, nextXp: 45, hp: 70, maxHp: 70, gold: 0, facilities: { kitchen: 0, workshop: 0, rooms: 0 }, commissionClaims: { battles: 0, steps: 0, stories: 0 }, stepsTraveled: 0, pillowBattles: 0, pillowActive: false, elite: false, bossFight: false, foe: 0, checkpointRow: -1, unsecuredLoot: [], unsecuredCards: [], journeyCardDrops: [], journeyNewItems: [], journeyNewCards: [], inventory, equipment: { weapon: 'gear-1', armor: 'gear-2', bag: null, scarf: null, charm: null, decor: null }, nextItemId: 3, lastLoot: null, lastLoots: [], cardLibrary: [...starterDeck], deck: starterDeck, log: [], battleLog: [], played: 0, totalTurns: 0, victories: 0, mapRow: -1, currentNode: null, visited: [] };
+  const s = { version: VERSION, seed: seed >>> 0, mapSeed: seed >>> 0, character: selectedCharacter, warmth: 0, traitUsed: false, coreRewardMisses: 0, specializations: {}, specializationBonusPoints: 0, specializationSeen: false, specializationResetTokens: 0, specializationResetQuestDone: false, specializationStoryRewards: [], magicHouseCooldowns: {}, mysteryResult: null, lastMysteryResult: null, blackMarketOffers: null, mainStory: null, mainStorySeen: [], sideStory: null, sidePromises: [], sideStorySeen: [], sideStoryQueue: [], sideChapterTriggers: [0, 0, 0, 0, 0, 0], criticalSideQuests: criticalQuestDefaults(), pendingScene: null, sideBuffs: [], sideBattleFirstStrike: 0, namelessClues: [], featureSeen: { bag: false, workshop: false, guests: false }, difficulty: selectedDifficulty, battleMode: battleMode === 'manual' ? 'manual' : 'auto', tutorialDone: battleMode !== 'manual', phase: 'hub', stage: 0, unlocked: 0, clears: [0, 0, 0, 0, 0, 0], guestRewards: [false, false, false, false, false, false], chapterCheckpoints: [-1, -1, -1, -1, -1, -1], level: 1, xp: 0, nextXp: 45, hp: 70, maxHp: 70, gold: 0, facilities: { kitchen: 0, workshop: 0, rooms: 0 }, commissionClaims: { battles: 0, steps: 0, stories: 0 }, stepsTraveled: 0, pillowBattles: 0, pillowActive: false, elite: false, bossFight: false, foe: 0, checkpointRow: -1, mapRow: -1, currentNode: null, visited: [], unsecuredLoot: [], unsecuredCards: [], journeyCardDrops: [], journeyNewItems: [], journeyNewCards: [], inventory, equipment: { weapon: 'gear-1', armor: 'gear-2', bag: null, scarf: null, charm: null, decor: null }, nextItemId: 3, lastLoot: null, lastLoots: [], lastLevelUp: null, cardLibrary: [...starterDeck], deck: starterDeck, log: [], battleLog: [], played: 0, totalTurns: 0, victories: 0 };
   s.hp = startingHp; s.maxHp = startingHp;
   s.turn = 1; s.energy = 3; s.block = 0; s.nextBlock = 0; s.weak = 0; s.healingSuppression = 0;
   s.lastCardSchool = null; s.lastCardMode = null; s.schoolChain = 0; s.rhythmTriggers = 0; s.recycleTriggered = false; s.healDrawTriggered = false; s.lucidFocusTriggered = false; s.lucidCharge = 0; s.counterTriggers = 0;
@@ -1510,14 +1610,15 @@ export function chooseAutoCard(s) {
   const affordable = s.hand.map((key, index) => {
     const c = card(key);
     const context = cardCombatContext(s, c);
-    const markLayers = c.mark || 0;
-    const effectiveMarkLayers = markLayers + (markLayers && s.character === 'uncle' && !s.traitUsed ? Math.ceil(markLayers * .3) : 0);
+    const markLayers = cardMarkGain(s, c);
+    const traitDraw = markLayers && s.character === 'uncle' && !s.traitUsed ? 1 : 0;
+    const effectiveMarkLayers = markLayers;
     let score = attackPreview(s, key);
     score += Math.min(incoming, (c.block || 0) + stats.skillPower + (context.sameSchool ? bonuses.chainBlock || 0 : 0)) * 1.15;
     const estimatedHealing = (c.heal || 0) + stats.healing + (context.sameSchool ? bonuses.chainHealing || 0 : 0);
     score += Math.min(missingHp, Math.round(estimatedHealing * (1 + (bonuses.healingPct || 0) + (context.alternating ? bonuses.rhythmHealingPct || 0 : 0)))) * 1.1;
     score += effectiveMarkLayers * (s.character === 'uncle' ? 4 : 2.7);
-    score += (c.draw || 0) * 5 + (c.energy || 0) * 6 + (c.recycle || 0) * 4 + (c.nextBlock || 0) * .55;
+    score += ((c.draw || 0) + traitDraw) * 5 + (c.energy || 0) * 6 + (c.recycle || 0) * 4 + (c.nextBlock || 0) * .55;
     if (c.recycle) score += (bonuses.recycleBlock || 0) * c.recycle + (bonuses.letterMastery && !s.recycleTriggered ? 8 : 0);
     if (c.heal && s.character === 'gaigai') score += (bonuses.warmthGain || 0) * 1.5 + stats.warmthPower;
     if (context.alternating) score += bonuses.rhythmMastery && s.rhythmTriggers < 2 ? 7 : 2;
@@ -1532,15 +1633,14 @@ export function chooseAutoCard(s) {
 }
 
 function recommendedDeck(s, size = 10) {
-  const preferredSchools = new Set(CHARACTERS[s.character]?.schools || []);
   const candidates = s.cardLibrary.map((key, index) => {
     const c = card(key);
     const damage = (c.damage || 0) * (c.hits || 1);
-    const effectPower = damage + (c.block || 0) * .85 + (c.nextBlock || 0) * .55 + (c.heal || 0) * .75
+    const effectPower = damage + (c.block || 0) * .85 + (c.nextBlock || 0) * .55 + (c.heal || 0)
       + (c.mark || 0) * 2.5 + (c.draw || 0) * 6 + (c.energy || 0) * 8 + (c.recycle || 0) * 5
       + (c.markBurst ? 8 : 0) + (c.consumeMark ? 12 : 0) + (c.blockDamage ? 8 : 0) + (c.retain ? 3 : 0)
       - (c.self || 0) * 1.5 - (c.exhaust ? 1 : 0);
-    const score = effectPower / Math.max(1, c.cost) + c.rank * 4 + (preferredSchools.has(c.school) ? 14 : 0);
+    const score = effectPower / Math.max(1, c.cost) + c.rank * 4 + (AUTO_LOADOUT_CARD_PRIORITY[c.baseKey] || 0);
     return {
       key, index, score,
       offense: Boolean(c.damage || c.mark || c.markBurst || c.consumeMark),
@@ -1580,6 +1680,8 @@ function victory(s) {
     s.xp -= s.nextXp; s.level++; levels++; s.nextXp = 45 + (s.level - 1) * 20;
     s.maxHp += 6; s.hp += difficulty.levelHeal;
   }
+  const specializationPointsGained = Math.max(0, Math.min(MAX_SPECIALIZATION_POINTS, s.level) - Math.min(MAX_SPECIALIZATION_POINTS, levelBefore));
+  s.lastLevelUp = levels ? { from: levelBefore, to: s.level, specializationPoints: specializationPointsGained } : null;
   const recovery = Math.round((3 + equipmentStats(s).recovery + s.facilities.kitchen * 2) * difficulty.recovery);
   s.hp = Math.min(s.maxHp, s.hp + recovery);
   const lootPool = CHAPTER_LOOT[s.stage];
@@ -1639,10 +1741,50 @@ function victory(s) {
 export function transition(state, action) {
   if (!state || !action) return state;
   const s = JSON.parse(JSON.stringify(state));
+  if (action.type === 'revive' && s.phase === 'lost') {
+    const equippedIds = new Set(Object.values(s.equipment || {}).filter(Boolean));
+    const lostNames = s.inventory.filter(item => equippedIds.has(item.id)).map(itemName);
+    s.inventory = s.inventory.filter(item => !equippedIds.has(item.id));
+    s.equipment = Object.fromEntries(Object.keys(SLOT_LABELS).map(slot => [slot, null]));
+    s.phase = 'hub';
+    s.hp = s.maxHp;
+    s.energy = 3; s.block = 0; s.nextBlock = 0; s.weak = 0; s.healingSuppression = 0;
+    s.mapRow = -1; s.currentNode = null; s.visited = []; s.checkpointRow = -1;
+    s.unsecuredLoot = []; s.unsecuredCards = []; s.journeyCardDrops = [];
+    s.journeyNewItems = (s.journeyNewItems || []).filter(id => !equippedIds.has(id));
+    if (equippedIds.has(s.lastLoot)) s.lastLoot = null;
+    s.lastLoots = (s.lastLoots || []).filter(id => !equippedIds.has(id));
+    s.elite = false; s.bossFight = false; s.mysteryResult = null; s.blackMarketOffers = null;
+    s.enemy = { hp: 0, maxHp: 0, block: 0, mark: 0, charge: 0 };
+    s.hand = []; s.draw = []; s.discard = []; s.exhaust = []; s.choices = [];
+    log(s, lostNames.length
+      ? `你被带回房车休整，生命已经恢复；身上装备全部遗失：${lostNames.join('、')}。背包里的装备仍然保留。`
+      : '你被带回房车休整，生命已经恢复；身上没有装备可遗失，背包里的装备仍然保留。');
+    return s;
+  }
+  if (action.type === 'reviveWithGold' && s.phase === 'lost') {
+    const cost = reviveCost(s);
+    if (s.gold < cost) return state;
+    s.gold -= cost;
+    s.phase = 'hub';
+    s.hp = s.maxHp;
+    s.energy = 3; s.block = 0; s.nextBlock = 0; s.weak = 0; s.healingSuppression = 0;
+    s.mapRow = -1; s.currentNode = null; s.visited = []; s.checkpointRow = -1;
+    s.unsecuredLoot = []; s.unsecuredCards = []; s.journeyCardDrops = [];
+    s.elite = false; s.bossFight = false; s.mysteryResult = null; s.blackMarketOffers = null;
+    s.enemy = { hp: 0, maxHp: 0, block: 0, mark: 0, charge: 0 };
+    s.hand = []; s.draw = []; s.discard = []; s.exhaust = []; s.choices = [];
+    log(s, `花费 ${cost} 枚旅币买活，房车把你接回灯下。身上装备与背包物品都已保留。`);
+    return s;
+  }
   if (action.type === 'viewCard') {
     const baseKey = cardBaseKey(action.key);
     if (!CARDS[baseKey]) return state;
     s.journeyNewCards = (s.journeyNewCards || []).filter(key => key !== baseKey);
+    return s;
+  }
+  if (action.type === 'viewCardLibrary') {
+    s.journeyNewCards = [];
     return s;
   }
   if (action.type === 'viewFeature' && s.phase === 'hub') {
@@ -1763,7 +1905,7 @@ export function transition(state, action) {
     }
     return s;
   }
-  if (action.type === 'debug') {
+  if (CHEATS_ENABLED && action.type === 'debug') {
     if (action.operation === 'gold') {
       s.gold = Math.min(100000, s.gold + 1000);
       log(s, '测试面板：获得 1000 枚旅币。');
@@ -1879,6 +2021,17 @@ export function transition(state, action) {
         if (!s.namelessClues.includes(clue)) s.namelessClues.push(clue);
       }
       log(s, '测试面板：已补齐终章主线与隐藏支线线索。');
+    } else if (action.operation === 'magicHouse') {
+      const station = MYSTERY_STATIONS.find(candidate => candidate.type === action.result);
+      if (!station) return state;
+      s.mainStory = null;
+      s.sideStory = null;
+      s.pendingScene = null;
+      s.mysteryResult = station.type;
+      s.lastMysteryResult = station.type;
+      s.phase = station.type;
+      s.blackMarketOffers = station.type === 'blackMarket' ? buildBlackMarketOffers(s) : null;
+      log(s, `测试面板：直接进入「${station.label}」。`);
     } else if (action.operation === 'sideStory') {
       const story = SIDE_STORIES[action.id];
       if (!story) return state;
@@ -1986,7 +2139,7 @@ export function transition(state, action) {
     const requestedRow = action.row ?? latestCheckpoint;
     const checkpoint = requestedRow === -1 || (CHECKPOINT_STEPS.includes(requestedRow + 1) && requestedRow <= latestCheckpoint) ? requestedRow : latestCheckpoint;
     const checkpointNode = checkpoint >= 0 ? `c${action.stage}r${checkpoint}checkpoint` : null;
-    s.stage = action.stage; s.phase = 'map'; s.mapRow = checkpoint; s.currentNode = checkpointNode; s.visited = checkpointNode ? [checkpointNode] : []; s.checkpointRow = checkpoint; s.unsecuredLoot = []; s.unsecuredCards = []; s.journeyCardDrops = []; s.journeyNewItems = []; s.journeyNewCards = []; s.lastLoot = null; s.lastLoots = []; s.mysteryResult = null;
+    s.stage = action.stage; s.phase = 'map'; s.mapRow = checkpoint; s.currentNode = checkpointNode; s.visited = checkpointNode ? [checkpointNode] : []; s.checkpointRow = checkpoint; s.unsecuredLoot = []; s.unsecuredCards = []; s.journeyCardDrops = []; s.journeyNewItems = []; s.journeyNewCards = []; s.lastLoot = null; s.lastLoots = []; s.lastLevelUp = null; s.mysteryResult = null; s.blackMarketOffers = null;
     s.elite = false; s.bossFight = false;
     log(s, checkpointNode ? `通过第 ${checkpoint + 1} 步夜程路标返回「${CHAPTERS[s.stage].name}」。` : `日落前抵达「${CHAPTERS[s.stage].name}」，今晚的梦境路线已经出现。`);
     ensureCriticalSideQuests(s);
@@ -2025,7 +2178,7 @@ export function transition(state, action) {
     }
     s.phase = 'hub';
     s.hp = s.maxHp;
-    s.mapRow = -1; s.currentNode = null; s.visited = []; s.checkpointRow = -1; s.mysteryResult = null;
+    s.mapRow = -1; s.currentNode = null; s.visited = []; s.checkpointRow = -1; s.mysteryResult = null; s.blackMarketOffers = null;
     s.unsecuredLoot = []; s.unsecuredCards = [];
     s.elite = false; s.bossFight = false;
     log(s, '收起梦境地图，回到亮着灯的房车。');
@@ -2066,7 +2219,12 @@ export function transition(state, action) {
         log(s, `命运魔法屋仍在重新洗牌，再走 ${remaining} 步后可以抽取。`);
         return s;
       }
-      const stationPool = MYSTERY_STATIONS.filter(station => station.type !== s.lastMysteryResult);
+      const marketRanks = blackMarketCardRanks(node.row);
+      const minimumBlackMarketGold = Math.min(
+        blackMarketCardPrice(s.stage, marketRanks.random, 'randomCard'),
+        blackMarketCardPrice(s.stage, marketRanks.shown, 'card'),
+      );
+      const stationPool = MYSTERY_STATIONS.filter(station => station.type !== s.lastMysteryResult && (station.type !== 'blackMarket' || s.gold >= minimumBlackMarketGold));
       let roll = random(s) * stationPool.reduce((sum, station) => sum + station.weight, 0);
       const station = stationPool.find(candidate => (roll -= candidate.weight) < 0) || stationPool[0];
       s.mysteryResult = station.type;
@@ -2086,6 +2244,10 @@ export function transition(state, action) {
     if (s.phase === 'camp') log(s, '抽中了亮灯休息站。');
     if (s.phase === 'memory') log(s, '抽中了整理回忆站，可以合成同名同等级技能。');
     if (s.phase === 'loadout') log(s, '抽中了牌组整备站，可以调整出战与候补技能。');
+    if (s.phase === 'blackMarket') {
+      s.blackMarketOffers = buildBlackMarketOffers(s);
+      log(s, '抽中了夜路黑市，三件只在今晚出现的藏品已经摆上柜台。');
+    }
     if (s.phase === 'event') {
       if (maybeStartSideStory(s)) return s;
       log(s, '抽中了沿途事件，岔路深处传来杯碟声。');
@@ -2319,14 +2481,11 @@ export function transition(state, action) {
     if (breakdown.tideReserve) s.nextBlock = (s.nextBlock || 0) + breakdown.tideReserve;
     let traitTriggered = false;
     let markGained = 0;
-    let traitMarkBonus = 0;
     if (c.mark) {
-      markGained = c.mark;
+      markGained = cardMarkGain(s, c);
       if (s.character === 'uncle' && !s.traitUsed) {
         s.traitUsed = true;
         traitTriggered = true;
-        traitMarkBonus = Math.ceil(markGained * .3);
-        markGained += traitMarkBonus;
         draw(s, 1);
       }
       s.block += markGained * (bonuses.markBlock || 0);
@@ -2413,7 +2572,7 @@ export function transition(state, action) {
     if (absorbedDamage) effects.push(`护盾抵消 ${absorbedDamage} 点`);
     if (weakpointDamage) effects.push(`其中 ${weakpointDamage} 点弱点伤害无视护盾`);
     if (gainedBlock) effects.push(`获得 ${gainedBlock} 点护盾`);
-    if (c.mark) effects.push(`发现 ${markGained} 层弱点${traitTriggered ? `（特性额外 ${traitMarkBonus} 层），抽 1 张牌` : ''}`);
+    if (c.mark) effects.push(`发现 ${markGained} 层弱点${traitTriggered ? '（特性抽 1 张牌）' : ''}`);
     if (warmthBonus) effects.push(`消耗 ${warmthBonus} 点暖意，追加 ${breakdown.warmthDamage} 点伤害`);
     if (c.heal) effects.push(`回复 ${healed} 点生命`);
     if (warmthGained) effects.push(`积攒 ${warmthGained} 点暖意`);
@@ -2467,7 +2626,7 @@ export function transition(state, action) {
       let damage = 0;
       let absorbedTotal = 0;
       for (let i = 0; i < (move.hits || 1); i++) {
-        const guardPierce = DIFFICULTIES[s.difficulty]?.guardPierce || 0;
+        const guardPierce = Math.max(0, (DIFFICULTIES[s.difficulty]?.guardPierce || 0) - (bonuses.guardPierceReduction || 0));
         const blockableDamage = Math.max(0, move.value - Math.ceil(move.value * guardPierce));
         const absorbed = Math.min(s.block, blockableDamage);
         s.block -= absorbed; damage += move.value - absorbed; absorbedTotal += absorbed;
@@ -2475,6 +2634,7 @@ export function transition(state, action) {
           const reflected = Math.ceil(absorbed * (.35 + (bonuses.reflectionPct || 0) + stats.counterPower * .01)) + (bonuses.counterFlatDamage || 0);
           s.enemy.hp = Math.max(0, s.enemy.hp - reflected);
           s.nextBlock = (s.nextBlock || 0) + (bonuses.counterNextBlock || 0);
+          s.hp = Math.min(s.maxHp, s.hp + (bonuses.counterHeal || 0));
           s.counterTriggers++;
           log(s, `小帅逐段回针，反击造成 ${reflected} 点伤害。`);
         }
@@ -2486,6 +2646,7 @@ export function transition(state, action) {
         const reflected = Math.ceil(absorbedTotal * (.35 + (bonuses.reflectionPct || 0) + stats.counterPower * .01)) + (bonuses.counterFlatDamage || 0);
         s.enemy.hp = Math.max(0, s.enemy.hp - reflected);
         s.nextBlock = (s.nextBlock || 0) + (bonuses.counterNextBlock || 0);
+        s.hp = Math.min(s.maxHp, s.hp + (bonuses.counterHeal || 0));
         log(s, `小帅用护盾反击，造成 ${reflected} 点伤害。`);
       }
       if (move.kind === 'curse') { s.weak = 1; log(s, '你陷入动摇，下回合共鸣效果降低 25%。'); }
@@ -2516,6 +2677,7 @@ export function transition(state, action) {
       log(s, `获得新技能牌「${card(result.key).name}」，收入候补。`);
     }
     s.choices = [];
+    s.lastLevelUp = null;
     if (s.bossFight) {
       const completedStage = s.stage;
       const firstClear = s.clears[completedStage] === 0;
@@ -2553,6 +2715,35 @@ export function transition(state, action) {
     } else return state;
     s.phase = 'map'; s.mysteryResult = null;
     continueSideScenes(s, 'camp');
+    return s;
+  }
+  if (action.type === 'blackMarketLeave' && s.phase === 'blackMarket') {
+    s.phase = 'map';
+    s.mysteryResult = null;
+    s.blackMarketOffers = null;
+    continueSideScenes(s, 'blackMarket');
+    return s;
+  }
+  if (action.type === 'blackMarketBuy' && s.phase === 'blackMarket') {
+    const offerIndex = s.blackMarketOffers?.findIndex(candidate => candidate.id === action.id) ?? -1;
+    const offer = s.blackMarketOffers?.[offerIndex];
+    if (!offer || s.gold < offer.cost) return state;
+    s.gold -= offer.cost;
+    if (offer.kind === 'randomCard' || offer.kind === 'card') {
+      const acquired = addCardReward(s, cardBaseKey(offer.key), cardRank(offer.key));
+      log(s, `在夜路黑市花费 ${offer.cost} 枚旅币，带走 Lv.${cardRank(acquired)}「${card(acquired).name}」。`);
+    } else if (offer.kind === 'gear' && offer.item && !itemFor(s, offer.item.id)) {
+      const item = offer.item;
+      s.inventory.unshift(item);
+      s.unsecuredLoot ||= [];
+      s.unsecuredLoot.push(item.id);
+      s.journeyNewItems ||= [];
+      s.journeyNewItems.push(item.id);
+      s.lastLoot = item.id;
+      s.lastLoots = [item.id];
+      log(s, `在夜路黑市花费 ${offer.cost} 枚旅币，带走${item.rarity}装备「${itemName(item)}」。`);
+    } else return state;
+    s.blackMarketOffers.splice(offerIndex, 1);
     return s;
   }
   if (action.type === 'memory' && s.phase === 'memory') {
@@ -2647,9 +2838,12 @@ export function restore(raw) {
     if (s?.version !== VERSION) return null;
     if (!Number.isInteger(s.pillowBattles)) s.pillowBattles = s.relic ? 3 : 0;
     if (typeof s.pillowActive !== 'boolean') s.pillowActive = false;
+    if (s.battleMode === 'auto') s.tutorialDone = true;
+    if (s.blackMarketOffers === undefined) s.blackMarketOffers = null;
+    if (s.lastLevelUp === undefined) s.lastLevelUp = null;
     const int = (n, min, max) => Number.isInteger(n) && n >= min && n <= max;
     const validCards = a => Array.isArray(a) && a.length <= 300 && a.every(k => typeof k === 'string' && /^[a-zA-Z]+(?:\+(?:[2-9]|10)?)?(?:~gear)?$/.test(k) && CARDS[cardBaseKey(k)]);
-    if (!s || s.version !== VERSION || typeof s.tutorialDone !== 'boolean' || !CHARACTERS[s.character] || !int(s.warmth, 0, 1000000) || typeof s.traitUsed !== 'boolean' || !int(s.coreRewardMisses, 0, 4) || !DIFFICULTIES[s.difficulty] || !['auto', 'manual'].includes(s.battleMode) || !['hub', 'map', 'combat', 'reward', 'camp', 'memory', 'loadout', 'negative', 'mystery', 'checkpoint', 'event', 'mainStory', 'sideStory', 'sideResolve', 'lost'].includes(s.phase)) return null;
+    if (!s || s.version !== VERSION || typeof s.tutorialDone !== 'boolean' || !CHARACTERS[s.character] || !int(s.warmth, 0, 1000000) || typeof s.traitUsed !== 'boolean' || !int(s.coreRewardMisses, 0, 4) || !DIFFICULTIES[s.difficulty] || !['auto', 'manual'].includes(s.battleMode) || !['hub', 'map', 'combat', 'reward', 'camp', 'memory', 'loadout', 'blackMarket', 'negative', 'mystery', 'checkpoint', 'event', 'mainStory', 'sideStory', 'sideResolve', 'lost'].includes(s.phase)) return null;
     if (!validSpecializationAllocation(s, s.specializations) || !int(s.specializationBonusPoints, 0, MAX_SPECIALIZATION_POINTS) || typeof s.specializationSeen !== 'boolean' || !int(s.specializationResetTokens, 0, 1) || typeof s.specializationResetQuestDone !== 'boolean') return null;
     if (!Array.isArray(s.specializationStoryRewards) || s.specializationStoryRewards.length > 3 || !s.specializationStoryRewards.every(stage => [1, 3, 5].includes(stage)) || new Set(s.specializationStoryRewards).size !== s.specializationStoryRewards.length) return null;
     if (!s.featureSeen || !['bag', 'workshop', 'guests'].every(key => typeof s.featureSeen[key] === 'boolean')) return null;
@@ -2694,6 +2888,14 @@ export function restore(raw) {
     if (!Array.isArray(s.battleLog) || s.battleLog.length > 160 || !s.battleLog.every(x => typeof x === 'string' && x.length < 300)) return null;
     const validAffix = affix => affix && AFFIXES.some(definition => definition.key === affix.key) && int(affix.value, 1, 100) && int(affix.tier, 1, 6) && typeof affix.prefix === 'string';
     const validItem = item => item && typeof item.id === 'string' && /^gear-\d+$/.test(item.id) && ITEMS[item.base] && int(item.itemLevel, 1, 60) && RARITIES.some(rarity => rarity.name === item.rarity) && Array.isArray(item.affixes) && item.affixes.length <= 4 && item.affixes.every(validAffix) && (item.skill === null || REWARDS.includes(item.skill)) && int(item.skillLevel, item.skill ? 1 : 0, item.skill ? 10 : 0);
+    const marketRanks = blackMarketCardRanks(s.mapRow);
+    const validBlackMarketOffer = offer => offer && /^(random-card|shown-card-[1-3]|gear)$/.test(offer.id) && ['randomCard', 'card', 'gear'].includes(offer.kind) && typeof offer.label === 'string' && int(offer.cost, 1, 1000)
+      && (offer.kind === 'gear'
+        ? offer.id === 'gear' && validItem(offer.item) && offer.cost === blackMarketGearPrice(s.stage, offer.item)
+        : validCards([offer.key]) && cardRank(offer.key) === (offer.kind === 'randomCard' ? marketRanks.random : marketRanks.shown)
+          && offer.cost === blackMarketCardPrice(s.stage, cardRank(offer.key), offer.kind));
+    if (s.blackMarketOffers !== null && (!Array.isArray(s.blackMarketOffers) || s.blackMarketOffers.length > 5 || !s.blackMarketOffers.every(validBlackMarketOffer) || new Set(s.blackMarketOffers.map(offer => offer.id)).size !== s.blackMarketOffers.length)) return null;
+    if ((s.phase === 'blackMarket') !== Array.isArray(s.blackMarketOffers)) return null;
     if (!Array.isArray(s.inventory) || s.inventory.length > 200 || !s.inventory.every(validItem) || new Set(s.inventory.map(item => item.id)).size !== s.inventory.length) return null;
     if (!Array.isArray(s.unsecuredLoot) || s.unsecuredLoot.length > 200 || !s.unsecuredLoot.every(id => typeof id === 'string' && itemFor(s, id)) || new Set(s.unsecuredLoot).size !== s.unsecuredLoot.length) return null;
     if (!validCards(s.unsecuredCards) || !validCards(s.journeyCardDrops)) return null;
@@ -2703,6 +2905,7 @@ export function restore(raw) {
     if (!s.equipment || !Object.keys(SLOT_LABELS).every(slot => s.equipment[slot] === null || (itemFor(s, s.equipment[slot]) && ITEMS[itemFor(s, s.equipment[slot]).base].slot === slot))) return null;
     if (s.lastLoot !== null && !itemFor(s, s.lastLoot)) return null;
     if (!Array.isArray(s.lastLoots) || s.lastLoots.length > 3 || new Set(s.lastLoots).size !== s.lastLoots.length || !s.lastLoots.every(id => typeof id === 'string' && itemFor(s, id))) return null;
+    if (s.lastLevelUp !== null && (!s.lastLevelUp || !int(s.lastLevelUp.from, 1, 100) || !int(s.lastLevelUp.to, s.lastLevelUp.from + 1, 100) || !int(s.lastLevelUp.specializationPoints, 0, MAX_SPECIALIZATION_POINTS))) return null;
     if (![s.played, s.totalTurns, s.victories].every(n => int(n, 0, 100000)) || !int(s.foe, 0, 15) || !int(s.checkpointRow, -1, MAP_STEPS - 1) || typeof s.elite !== 'boolean' || typeof s.bossFight !== 'boolean') return null;
     const nodes = chapterMap(s.stage, s.mapSeed);
     if (!int(s.mapRow, -1, MAP_STEPS - 1) || (s.currentNode !== null && !nodes.some(n => n.id === s.currentNode))) return null;

@@ -12,15 +12,15 @@ node ".codex\scripts\audit_artifact.mjs" "dist"
 if errorlevel 1 goto :failed
 
 echo [3/4] Creating ZIP...
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "scripts\package-xhs.ps1" -Source "dist" -Output "mistbound-1.0.1.zip"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "scripts\package-xhs.ps1" -Source "dist" -Output "mistbound-1.0.3.zip"
 if errorlevel 1 goto :failed
 
 echo [4/4] Auditing ZIP...
-node ".codex\scripts\audit_artifact.mjs" "mistbound-1.0.1.zip"
+node ".codex\scripts\audit_artifact.mjs" "mistbound-1.0.3.zip"
 if errorlevel 1 goto :failed
 
 echo.
-echo Done: mistbound-1.0.1.zip
+echo Done: mistbound-1.0.3.zip
 pause
 exit /b 0
 

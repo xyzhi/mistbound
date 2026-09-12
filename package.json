@@ -9,7 +9,8 @@
     "dev": "vite --host 127.0.0.1",
     "prebuild": "npm run audio",
     "build": "node scripts/build.mjs",
-    "test": "node --test --test-isolation=none tests/*.test.mjs"
+    "test": "node --test --test-isolation=none tests/*.test.mjs",
+    "test:balance": "node scripts/verify-balance.mjs"
   },
   "dependencies": {
     "lucide-react": "1.34.0",
