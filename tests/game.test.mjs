@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { BLACK_MARKET_GEAR_PRICES, BLACK_MARKET_RANDOM_CARD_PRICES, BLACK_MARKET_SHOWN_CARD_PRICES, CARDS, CHARACTERS, CHAPTER_LOOT, CHECKPOINTS, CHECKPOINT_STEPS, CORE_REWARDS, DIFFICULTIES, DISORDER_GOLD_LOSS_PERCENT, ENCOUNTERS, ENEMIES, EQUIPMENT_ART, ITEMS, MAP_STEPS, MAX_SPECIALIZATION_POINTS, MYSTERY_STATIONS, REWARDS, SKILL_UNLOCKS, SPECIALIZATIONS, attackBreakdown, attackPreview, blackMarketCardPrice, blackMarketCardRanks, blackMarketGearPrice, buildChapterMap, canInvestSpecialization, card, chooseAutoCard, commissionStatus, compareCardKeys, description, disorderGoldLoss, enemyFor, equipmentDropCount, equipmentInnateSkillChance, equipmentRandomSkillChance, equipmentRarityChances, equipmentSkillDropScale, equipmentStats, facilityCost, intent, itemBaseStats, itemFor, itemStats, itemTier, itemUpgradeCost, magicHouseCooldownRemaining, newRun, rerollCost, restore, reviveCost, serialize, sideCardTurnInCandidates, skillRewardRank, specializationAvailablePoints, specializationPointTotal, specializationSpent, specializationUnlocked, transition } from '../src/game.mjs';
+import { BLACK_MARKET_GEAR_PRICES, BLACK_MARKET_RANDOM_CARD_PRICES, BLACK_MARKET_SHOWN_CARD_PRICES, CARDS, CHARACTERS, CHAPTER_LOOT, CHECKPOINTS, CHECKPOINT_STEPS, CORE_REWARDS, DIFFICULTIES, DISORDER_GOLD_LOSS_PERCENT, ENCOUNTERS, ENEMIES, EQUIPMENT_ART, ITEMS, MAP_STEPS, MAX_PLAYER_LEVEL, MAX_SPECIALIZATION_POINTS, MYSTERY_STATIONS, REWARDS, SKILL_UNLOCKS, SPECIALIZATIONS, ambientEventValues, attackBreakdown, attackPreview, beginBattle, blackMarketCardPrice, blackMarketCardRanks, blackMarketGearPrice, buildChapterMap, canInvestSpecialization, card, chooseAutoCard, commissionStatus, compareCardKeys, description, disorderGoldLoss, enemyFor, enemyInitialDamageMultiplier, equipmentDropCount, equipmentInnateSkillChance, equipmentRandomSkillChance, equipmentRarityChances, equipmentSkillDropScale, equipmentStats, facilityCost, intent, itemBaseStats, itemFor, itemStats, itemTier, itemUpgradeCost, magicHouseCooldownRemaining, newRun, rerollCost, restore, reviveCost, serialize, sideCardTurnInCandidates, skillRewardRank, specializationAvailablePoints, specializationNodeText, specializationPointTotal, specializationSpent, specializationUnlocked, transition } from '../src/game.mjs';
 
 const leaveHub = (state, stage = 0) => {
   let next = transition(state, { type: 'depart', stage });
@@ -305,6 +305,41 @@ test('第一章普通与精英使用独立敌人池且机制清晰区分', () =>
   assert.ok(Math.min(...elites.map(enemy => enemy.hp * 1.5)) > Math.max(...normal.map(enemy => enemy.hp)));
 });
 
+test('跨章后普通怪承接前章末段压力，精英怪强于前章 Boss', () => {
+  const start = ({ difficulty, stage, foe = 0, elite = false, bossFight = false, mapRow }) => {
+    const state = newRun(2500 + stage * 10 + foe, 'manual', difficulty);
+    Object.assign(state, { stage, foe, elite, bossFight, mapRow });
+    beginBattle(state);
+    return state;
+  };
+  const peakPressure = state => enemyInitialDamageMultiplier(state)
+    * Math.max(...enemyFor(state).pattern.map(move => ['attack', 'curse', 'dispel', 'charge'].includes(move.kind) ? move.value * (move.hits || 1) : 0));
+
+  const normalHpScales = [1, 1.2, 1.45, 1.35, 1.35, 1.4];
+  const normalDamageScales = [1, 1.2, 1.25, 1.28, 1.32, 1.36];
+  const eliteHpScales = [1, 1.1, 1.35, 1.35, 1.4, 1.45];
+  const eliteDamageScales = [1, 1.08, 1.12, 1.16, 1.2, 1.24];
+  for (const difficulty of Object.keys(DIFFICULTIES)) {
+    for (let stage = 1; stage < ENEMIES.length; stage++) {
+      const previousBoss = start({ difficulty, stage: stage - 1, bossFight: true, mapRow: MAP_STEPS - 1 });
+      const previousNormals = ENCOUNTERS[stage - 1]
+        .map((enemy, foe) => ({ enemy, foe }))
+        .filter(({ enemy }) => !enemy.eliteOnly)
+        .map(({ foe }) => start({ difficulty, stage: stage - 1, foe, mapRow: MAP_STEPS - 1 }));
+      const previousNormalHp = Math.max(...previousNormals.map(state => state.enemy.maxHp));
+      const previousNormalPressure = Math.max(...previousNormals.map(peakPressure));
+      for (let foe = 0; foe < ENCOUNTERS[stage].length; foe++) {
+        const normal = start({ difficulty, stage, foe, mapRow: 0 });
+        const elite = start({ difficulty, stage, foe, elite: true, mapRow: 0 });
+        assert.ok(normal.enemy.maxHp >= Math.round(previousNormalHp * normalHpScales[stage]), `${difficulty} 第${stage + 1}章普通怪生命跨章回落`);
+        assert.ok(peakPressure(normal) >= previousNormalPressure * normalDamageScales[stage] - 1e-9, `${difficulty} 第${stage + 1}章普通怪攻势跨章回落`);
+        assert.ok(elite.enemy.maxHp >= Math.round(previousBoss.enemy.maxHp * eliteHpScales[stage]), `${difficulty} 第${stage + 1}章精英生命低于前章Boss`);
+        assert.ok(peakPressure(elite) >= peakPressure(previousBoss) * eliteDamageScales[stage] - 1e-9, `${difficulty} 第${stage + 1}章精英攻势低于前章Boss`);
+      }
+    }
+  }
+});
+
 test('敌人回合成长只提高进攻压力，茶杯护盾和治疗只保留初始加成', () => {
   const state = enterBattle(243);
   state.stage = 0;
@@ -488,6 +523,14 @@ test('打开卡组页签后会清除所有技能卡 NEW 标记', () => {
   const viewed = transition(state, { type: 'viewCardLibrary' });
   assert.deepEqual(viewed.journeyNewCards, []);
   assert.deepEqual(viewed.deck, state.deck);
+});
+
+test('打开装备或背包页签后会清除所有装备 NEW 标记', () => {
+  const state = newRun(1242, 'manual');
+  state.journeyNewItems = state.inventory.map(item => item.id);
+  const viewed = transition(state, { type: 'viewItemLibrary' });
+  assert.deepEqual(viewed.journeyNewItems, []);
+  assert.deepEqual(viewed.inventory, state.inventory);
 });
 
 test('六章各有八种装备底材并覆盖六个装备位', () => {
@@ -996,9 +1039,50 @@ test('黑市允许连续兑换，已兑换商品消失且其余商品保留', ()
   assert.ok(boughtGear.inventory.some(item => item.id === gearOffer.item.id));
   assert.ok(boughtGear.unsecuredLoot.includes(gearOffer.item.id));
   assert.ok(boughtGear.journeyNewItems.includes(gearOffer.item.id));
+  assert.notEqual(boughtGear.equipment[ITEMS[gearOffer.item.base].slot], gearOffer.item.id);
   assert.deepEqual(boughtGear.lastLoots, [gearOffer.item.id]);
   assert.equal(boughtGear.blackMarketOffers.length, 3);
   assert.ok(!boughtGear.blackMarketOffers.some(offer => offer.id === gearOffer.id));
+
+  const equippedGear = transition(boughtGear, { type: 'equipAcquired', kind: 'gear', key: gearOffer.item.id });
+  assert.equal(equippedGear.equipment[ITEMS[gearOffer.item.base].slot], gearOffer.item.id);
+});
+
+test('支线商店展示确定的高品质装备且购买后可直接选择装备', () => {
+  let state = leaveHub(newRun(3233, 'manual'), 1);
+  state.gold = 500;
+  state.sidePromises = [{ id: 'borrowedUmbrella', choice: 'borrow', type: 'shop', stage: 1, createdStep: 0, createdVictories: 0, dueStep: 6, shop: 'umbrella' }];
+  state = transition(state, { type: 'debug', operation: 'sideExchange' });
+  const gearOffer = state.pendingScene.goods.find(good => good.kind === 'gear');
+  assert.ok(gearOffer.item);
+  assert.ok(gearOffer.label.includes(ITEMS[gearOffer.item.base].name));
+  assert.ok(['稀有', '传奇'].includes(gearOffer.item.rarity));
+  assert.ok(['blueUmbrella', 'windowCoat', 'oathPlate'].includes(gearOffer.item.base));
+
+  const previousEquipment = state.equipment[ITEMS[gearOffer.item.base].slot];
+  const bought = transition(state, { type: 'sideShopBuy', id: gearOffer.id });
+  assert.equal(bought.phase, 'map');
+  assert.ok(itemFor(bought, gearOffer.item.id));
+  assert.equal(bought.equipment[ITEMS[gearOffer.item.base].slot], previousEquipment);
+  assert.deepEqual(bought.directEquipLootIds, [gearOffer.item.id]);
+  const equipped = transition(bought, { type: 'equipAcquired', kind: 'gear', key: gearOffer.item.id });
+  assert.equal(equipped.equipment[ITEMS[gearOffer.item.base].slot], gearOffer.item.id);
+});
+
+test('旧存档中的随机支线装备商品会补全为可预览的确定装备', () => {
+  const state = leaveHub(newRun(3234, 'manual'), 1);
+  state.phase = 'sideResolve';
+  state.pendingScene = {
+    storyId: 'borrowedUmbrella',
+    kind: 'shop',
+    title: '蓝柄旧伞回到伞店',
+    text: '雨停时，老板出现在街角。',
+    promise: { id: 'borrowedUmbrella', type: 'shop', stage: 1, createdStep: 0, createdVictories: 0, shop: 'umbrella' },
+    goods: [{ id: 'gear', kind: 'gear', bases: ['blueUmbrella', 'windowCoat', 'oathPlate'], cost: 58, label: '一把收好雨声的长伞' }],
+  };
+  const prepared = transition(state, { type: 'prepareSideShop' });
+  assert.ok(prepared.pendingScene.goods[0].item);
+  assert.ok(['稀有', '传奇'].includes(prepared.pendingScene.goods[0].item.rarity));
 });
 
 test('支线交付纯候补卡时不会误判出战牌不足十张', () => {
@@ -1173,6 +1257,37 @@ test('地图只允许沿连线前进，未知站点抵达后才揭晓事件', ()
   assert.equal(next.mysteryResult, null);
 });
 
+test('沿途事件和亮灯休息站数值随章节与生命上限成长', () => {
+  const early = ambientEventValues({ stage: 0, maxHp: 70 });
+  assert.deepEqual(early, { teaHeal: 12, photoHpCost: 5, photoGold: 22, campHeal: 18, pillowCost: 30, pillowBlock: 2, pillowBattles: 3 });
+  const late = ambientEventValues({ stage: 5, maxHp: 190 });
+  assert.ok(late.teaHeal > early.teaHeal);
+  assert.ok(late.photoHpCost > early.photoHpCost);
+  assert.ok(late.photoGold > early.photoGold);
+  assert.ok(late.campHeal > early.campHeal);
+  assert.ok(late.pillowCost > early.pillowCost);
+  assert.ok(late.pillowBlock > early.pillowBlock);
+
+  const event = newRun(2206, 'manual');
+  Object.assign(event, { stage: 5, phase: 'event', maxHp: 190, hp: 100, gold: 0 });
+  const tea = transition(event, { type: 'event', choice: 'spring' });
+  assert.equal(tea.hp, 100 + late.teaHeal);
+  const bargain = transition(event, { type: 'event', choice: 'bargain' });
+  assert.equal(bargain.hp, 100 - late.photoHpCost);
+  assert.equal(bargain.gold, late.photoGold);
+
+  const camp = newRun(2207, 'manual');
+  Object.assign(camp, { stage: 5, phase: 'camp', maxHp: 190, hp: 100, gold: 500 });
+  const rested = transition(camp, { type: 'camp', choice: 'rest' });
+  assert.equal(rested.hp, 100 + late.campHeal);
+  const pillow = transition(camp, { type: 'camp', choice: 'relic' });
+  assert.equal(pillow.gold, 500 - late.pillowCost);
+  assert.equal(pillow.pillowBattles, late.pillowBattles);
+  const equipmentBlock = equipmentStats(pillow).block;
+  beginBattle(pillow);
+  assert.equal(pillow.block, equipmentBlock + late.pillowBlock);
+});
+
 test('六个区域每次探索五十步且每步最多三个选择', () => {
   for (let chapter = 0; chapter < 6; chapter++) {
     const nodes = buildChapterMap(chapter);
@@ -1205,7 +1320,7 @@ test('隐藏测试面板操作不会破坏存档并可跳转路标', () => {
   state = transition(state, { type: 'debug', operation: 'gold' });
   state = transition(state, { type: 'debug', operation: 'level' });
   state = transition(state, { type: 'debug', operation: 'unlockWorkshop' });
-  assert.ok(state.stepsTraveled >= 20);
+  assert.equal(state.workshopUnlocked, true);
   state = transition(state, { type: 'debug', operation: 'unlockGuests' });
   assert.ok(state.clears.reduce((sum, count) => sum + count, 0) >= 2);
   assert.ok(state.unlocked >= 1);
@@ -1356,6 +1471,32 @@ test('四个里程碑都可选择回满继续或回满返回房车', () => {
   }
 });
 
+test('房车工坊仅在抵达夜路杂货铺后解锁', () => {
+  const state = leaveHub(newRun(3610, 'manual'));
+  state.stepsTraveled = 99;
+  state.inventory.push(...Array.from({ length: 8 }, (_, index) => ({
+    id: `gear-${index + 3}`,
+    base: 'gardenLedger',
+    itemLevel: 1,
+    rarity: '普通',
+    affixes: [],
+    skill: null,
+    skillLevel: 0,
+  })));
+  state.nextItemId = 11;
+  assert.equal(state.workshopUnlocked, false);
+
+  const nodes = buildChapterMap(0, state.mapSeed);
+  const shop = nodes.find(node => node.type === 'checkpoint' && node.row === 19);
+  const parent = nodes.find(node => node.links.includes(shop.id));
+  state.mapRow = parent.row;
+  state.currentNode = parent.id;
+  state.visited = [parent.id];
+  const arrived = transition(state, { type: 'node', id: shop.id });
+  assert.equal(arrived.phase, 'checkpoint');
+  assert.equal(arrived.workshopUnlocked, true);
+});
+
 test('战败后可以复活回房车但会遗失身上装备', () => {
   const state = leaveHub(newRun(361, 'manual'));
   const spareItem = { id: 'gear-3', base: 'gardenLedger', itemLevel: 1, rarity: '普通', affixes: [], skill: null, skillLevel: 0 };
@@ -1448,18 +1589,31 @@ test('存档可恢复，异常存档会被拒绝', () => {
   assert.equal(restore('not-json'), null);
 });
 
-test('三名角色各有三条完整专精路线且单路线容量为二十点', () => {
-  assert.equal(MAX_SPECIALIZATION_POINTS, 30);
+test('三名角色各有三条高层数专精路线且满点无法点满单线', () => {
+  assert.equal(MAX_SPECIALIZATION_POINTS, 60);
   for (const key of Object.keys(CHARACTERS)) {
     assert.equal(SPECIALIZATIONS[key].length, 3);
     for (const route of SPECIALIZATIONS[key]) {
-      assert.equal(route.nodes.reduce((sum, talent) => sum + talent.maxRank, 0), 20);
+      assert.deepEqual(route.nodes.map(talent => talent.maxRank), [20, 20, 20, 20, 1]);
+      assert.deepEqual(route.nodes.map(talent => talent.requires), [0, 5, 15, 30, 50]);
+      assert.equal(route.nodes.reduce((sum, talent) => sum + talent.maxRank, 0), 81);
+      assert.ok(route.nodes.reduce((sum, talent) => sum + talent.maxRank, 0) > MAX_SPECIALIZATION_POINTS);
       assert.equal(new Set(route.nodes.map(talent => talent.id)).size, route.nodes.length);
     }
   }
 });
 
-test('专精点随等级累计并在第二章开放，总数不超过三十点', () => {
+test('多级专精描述立即显示当前等级的累计数值', () => {
+  const guard = SPECIALIZATIONS.xiaoshuai[2].nodes.find(talent => talent.id === 'xLucidPatch');
+  assert.equal(specializationNodeText(guard, 0), '每次受到卡牌自伤后获得 1 点护盾。');
+  assert.equal(specializationNodeText(guard, 2), '每次受到卡牌自伤后获得 2 点护盾。');
+  const recycle = SPECIALIZATIONS.uncle[1].nodes.find(talent => talent.id === 'uLetterGuard');
+  assert.equal(specializationNodeText(recycle, 3), '每取回 1 张弃牌，获得 3 点护盾。');
+  const threshold = SPECIALIZATIONS.xiaoshuai[2].nodes.find(talent => talent.id === 'xLucidFocus');
+  assert.equal(specializationNodeText(threshold, 5), threshold.text);
+});
+
+test('专精点随等级累计并在第二章开放，总数不超过六十点', () => {
   const state = newRun(4101, 'manual', 'standard', 'uncle');
   state.level = 9;
   assert.equal(specializationPointTotal(state), 9);
@@ -1467,9 +1621,33 @@ test('专精点随等级累计并在第二章开放，总数不超过三十点',
   assert.equal(specializationUnlocked(state), false);
   state.unlocked = 1;
   assert.equal(specializationUnlocked(state), true);
-  state.level = 40;
+  state.level = 58;
   state.specializationBonusPoints = 3;
-  assert.equal(specializationPointTotal(state), 30);
+  assert.equal(specializationPointTotal(state), 60);
+});
+
+test('角色满级后不再升级且不会继续积累经验', () => {
+  const state = newRun(41010, 'manual');
+  Object.assign(state, {
+    phase: 'combat', level: MAX_PLAYER_LEVEL, xp: state.nextXp - 1,
+    hand: ['slash'], energy: 3, enemy: { hp: 1, maxHp: 1, block: 0, mark: 0, charge: 0 },
+  });
+  const next = transition(state, { type: 'play', index: 0 });
+  assert.equal(next.level, MAX_PLAYER_LEVEL);
+  assert.equal(next.xp, 0);
+  assert.equal(next.lastLevelUp, null);
+});
+
+test('清醒梦减伤不会降低终极节点按基础自伤生成的蓄力', () => {
+  const state = newRun(41011, 'manual', 'standard', 'xiaoshuai');
+  Object.assign(state, {
+    phase: 'combat', hp: 20, hand: ['risk'], draw: [], discard: [], exhaust: [], energy: 3,
+    enemy: { hp: 100, maxHp: 100, block: 0, mark: 0, charge: 0 },
+    specializations: { xLucidPain: 20, xLucidPatch: 10, xLucidEdge: 20, xLucidWake: 1 },
+  });
+  const next = transition(state, { type: 'play', index: 0 });
+  assert.equal(state.hp - next.hp, 2);
+  assert.equal(next.lucidCharge, card('risk').self * 3);
 });
 
 test('专精加点需要满足路线门槛，确认后不能直接回退', () => {

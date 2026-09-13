@@ -2,14 +2,14 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import {
-  AlertTriangle, ArrowLeft, Backpack, BookOpen, Check, ChevronDown, CircleHelp, Coins, Combine, Crown, Flame, FlaskConical, Gem, Heart, Hourglass,
-  House, ListPlus, Lock, MapPin, Menu, Moon, PackageOpen, Scale, Shield, Shirt,
+  AlertTriangle, ArrowLeft, Backpack, BookOpen, Check, ChevronDown, CircleHelp, Coins, Combine, Copy, Crown, Flame, FlaskConical, Gem, Heart, Hourglass,
+  House, ListPlus, Lock, MapPin, Moon, PackageOpen, Scale, Shield, Shirt,
   Sparkles, Swords, Target, TentTree, Trash2, TrendingUp, Volume2, VolumeX, Wind, Wrench, X,
 } from 'lucide-react';
 import {
-  AFFIX_LABELS, CARDS, CHARACTERS, CHEATS_ENABLED, CHECKPOINTS, CHECKPOINT_STEPS, CHAPTER_LOOT, CHAPTERS, CRITICAL_SIDE_QUESTS, DIFFICULTIES, DISORDER_GOLD_LOSS_PERCENT, ENEMIES, EQUIPMENT_ART, GUESTS, ITEMS, MAIN_STORY, MAX_SPECIALIZATION_POINTS, MYSTERY_STATIONS, SAVE_KEY, SEGMENT_NAMES, SIDE_STORIES, SLOT_LABELS, SPECIALIZATIONS, attackBreakdown, canInvestSpecialization, card,
-  cardBaseKey, cardRank, chapterMap, chooseAutoCard, commissionStatus, compareCardKeys, description, enemyFor, equipmentStats, facilityCost, intent, itemFor, itemLines, MAP_STEPS,
-  disorderGoldLoss, itemDetailLines, itemName, itemScore, itemStats, itemTier, itemUpgradeCost, magicHouseCooldownRemaining, mainStorySpecializationReward, newRun, rankedCardKey, rerollCost, restore, reviveCost, salvageValue, serialize, sideCardTurnInCandidates, sideGearTurnInCandidates, skillRewardRank, specializationAvailablePoints, specializationBonuses, specializationPointTotal, specializationSpent, specializationUnlocked, transition, upgradeCardKey,
+  AFFIX_LABELS, CARDS, CHARACTERS, CHEATS_ENABLED, CHECKPOINTS, CHECKPOINT_STEPS, CHAPTER_LOOT, CHAPTERS, CRITICAL_SIDE_QUESTS, DIFFICULTIES, DISORDER_GOLD_LOSS_PERCENT, ENEMIES, EQUIPMENT_ART, GUESTS, ITEMS, MAIN_STORY, MAX_SPECIALIZATION_POINTS, MYSTERY_STATIONS, SAVE_KEY, SEGMENT_NAMES, SIDE_STORIES, SLOT_LABELS, SPECIALIZATIONS, VERSION, attackBreakdown, canInvestSpecialization, card,
+  ambientEventValues, cardBaseKey, cardRank, chapterMap, chooseAutoCard, commissionStatus, compareCardKeys, description, enemyFor, equipmentStats, facilityCost, intent, itemFor, itemLines, MAP_STEPS,
+  disorderGoldLoss, itemDetailLines, itemName, itemScore, itemStats, itemTier, itemUpgradeCost, magicHouseCooldownRemaining, mainStorySpecializationReward, newRun, rankedCardKey, rerollCost, restore, reviveCost, salvageValue, serialize, sideCardTurnInCandidates, sideGearTurnInCandidates, skillRewardRank, specializationAvailablePoints, specializationBonuses, specializationNodeText, specializationPointTotal, specializationSpent, specializationUnlocked, transition, upgradeCardKey,
 } from './game.mjs';
 import './styles.css';
 import camperPixel from './assets/pixel/runtime/camper.webp';
@@ -167,9 +167,12 @@ const MusicContext = React.createContext({ enabled: true, toggle: () => {}, play
 
 function MusicProvider({ children }) {
   const contextRef = useRef(null);
+  const musicBufferRef = useRef(null);
   const sourceRef = useRef(null);
   const musicGainRef = useRef(null);
+  const enabledRef = useRef(false);
   const [enabled, setEnabled] = useState(() => localStorage.getItem(MUSIC_ENABLED_KEY) !== 'off');
+  useEffect(() => { enabledRef.current = enabled; }, [enabled]);
   const startMusic = () => {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextClass) return null;
@@ -182,15 +185,22 @@ function MusicProvider({ children }) {
       for (let index = 0; index < channel.length; index++) channel[index] = samples.getInt16(index * 2, true) / 32768;
       const gain = context.createGain();
       gain.gain.value = .24;
-      const source = context.createBufferSource();
-      source.buffer = buffer;
-      source.loop = true;
-      source.connect(gain);
       gain.connect(context.destination);
-      source.start();
       contextRef.current = context;
-      sourceRef.current = source;
+      musicBufferRef.current = buffer;
       musicGainRef.current = gain;
+    }
+    if (!sourceRef.current && musicBufferRef.current && musicGainRef.current) {
+      const source = contextRef.current.createBufferSource();
+      source.buffer = musicBufferRef.current;
+      source.loop = true;
+      source.connect(musicGainRef.current);
+      source.onended = () => {
+        sourceRef.current = null;
+        if (enabledRef.current && contextRef.current?.state !== 'closed') startMusic();
+      };
+      source.start();
+      sourceRef.current = source;
     }
     contextRef.current.resume().catch(() => {});
     return contextRef.current;
@@ -274,7 +284,13 @@ function MusicProvider({ children }) {
     document.addEventListener('click', handleButtonSound, true);
     return () => document.removeEventListener('click', handleButtonSound, true);
   }, [enabled]);
-  useEffect(() => () => { sourceRef.current?.stop(); contextRef.current?.close(); }, []);
+  useEffect(() => () => {
+    enabledRef.current = false;
+    const source = sourceRef.current;
+    sourceRef.current = null;
+    source?.stop();
+    contextRef.current?.close();
+  }, []);
   return <MusicContext.Provider value={{ enabled, toggle, playSfx }}>{children}</MusicContext.Provider>;
 }
 
@@ -420,7 +436,7 @@ function Splash({ saved, onNew, onContinue }) {
 
 const featureUnlocks = state => ({
   bag: state.victories > 0 || state.inventory.length > 2,
-  workshop: state.stepsTraveled >= 20 || state.inventory.length >= 8,
+  workshop: state.workshopUnlocked,
   guests: state.clears.reduce((sum, count) => sum + count, 0) >= 2,
 });
 
@@ -443,7 +459,6 @@ function CamperHub({ state, dispatch, onDrawer, onSpecialization, onWorkshop, on
         <span><small className="eyebrow">DAY {state.victories + 1} · 黄昏</small><strong>{CHARACTERS[state.character].name} · 晚安旅行屋</strong></span>
       </button>
       <div className="hub-resources"><Tip text="生命归零时可以选择复活回房车。"><span><Heart />{state.hp}/{state.maxHp}</span></Tip><Tip text={`旅币用于工坊重抽属性、升级房车、旅途交易和买活。当前等级买活需要 ${reviveCost(state)} 枚旅币。`}><span><Coins />{state.gold}</span></Tip></div>
-      {bagUnlocked ? <button className="icon-button" onPointerDown={capturePress} onClick={onDrawer} aria-label="打开装备与背包"><Menu /></button> : <span />}
     </header>
     <section className="hub-copy">
       <span className="eyebrow">今晚停靠在</span>
@@ -713,7 +728,7 @@ function Battle({ state, dispatch, outcome = null, battleSpeed = 1, onBattleSpee
         </div>
         <div className="battle-statuses">
           {state.weak > 0 && <Tip text="虚弱会让你造成的基础伤害降低 25%，持续到下一回合。"><div className="status"><Moon size={14} />虚弱：伤害 -25%</div></Tip>}
-          {state.character === 'gaigai' && state.warmth > 0 && <Tip text={`治疗牌会积攒暖意；下一张攻击将消耗 ${Math.round((1 - Math.min(.4, Math.max(battleSpecialization.warmthRetainPct || 0, battleSpecialization.warmthMastery ? .4 : 0))) * 100)}% 暖意并追加伤害。`}><div className="status warmth-status"><Flame size={14} />暖意 {state.warmth}</div></Tip>}
+          {state.character === 'gaigai' && state.warmth > 0 && <Tip text={`治疗牌会积攒暖意；下一张攻击将消耗 ${Math.round((1 - Math.min(.5, Math.max(battleSpecialization.warmthRetainPct || 0, battleSpecialization.warmthMastery ? .5 : 0))) * 100)}% 暖意并追加伤害。`}><div className="status warmth-status"><Flame size={14} />暖意 {state.warmth}</div></Tip>}
           {state.schoolChain > 1 && (battleSpecialization.chainDamagePct || battleSpecialization.chainBlock || battleSpecialization.chainHealing || battleSpecialization.chainDepthPct || battleSpecialization.followMastery) && <Tip text="连续使用同一流派的卡牌会触发追问专精的额外效果。"><div className="status"><BookOpen size={14} />连携 {state.schoolChain}</div></Tip>}
           {state.lucidCharge > 0 && <Tip text="下一张攻击会消耗清醒蓄力并追加伤害。"><div className="status"><Sparkles size={14} />清醒蓄力 {state.lucidCharge}</div></Tip>}
         </div>
@@ -775,7 +790,7 @@ function Reward({ state, dispatch }) {
       return <CardView key={key} cardKey={rankedCardKey(key, previewRank)} compact active={picked === key} style={{ '--fan-offset': offset, '--fan-y': Math.abs(offset) * 5, '--fan-z': 10 - Math.abs(offset) }} onClick={() => chooseReward(key)} disabled={Boolean(picked)} />;
     })}</div></section>
     <button className="skip-reward-button secondary" disabled={Boolean(picked)} onClick={() => setConfirmingSkip(true)}>放弃选牌</button>
-    {reviewing && <BattleReview entries={state.battleLog} enemyName={enemyFor(state).name} onClose={() => setReviewing(false)} />}
+    {reviewing && <BattleReview state={state} onClose={() => setReviewing(false)} />}
     {confirmingSkip && <SkipCardRewardConfirm onCancel={() => setConfirmingSkip(false)} onConfirm={() => dispatch({ type: 'reward', key: null })} />}
   </Overlay>;
 }
@@ -918,10 +933,11 @@ function MysteryStation({ state, dispatch }) {
 }
 
 function EventView({ state, dispatch }) {
+  const values = ambientEventValues(state);
   return <Overlay background={PIXEL_BACKGROUNDS[state.stage]} eyebrow="沿途事件" title="夜路杂货车" text="亮着小灯的摊主，提出两种交换。">
     <div className="camp-grid">
-      <CampChoice icon={Heart} title="喝杯花茶" text="回复最多 12 点生命" onClick={() => dispatch({ type: 'event', choice: 'spring' })} />
-      <CampChoice icon={Coins} title="出售旧照片" text="消耗 5 点生命，获得 22 枚旅币" onClick={() => dispatch({ type: 'event', choice: 'bargain' })} />
+      <CampChoice icon={Heart} title="喝杯花茶" text={`回复最多 ${values.teaHeal} 点生命`} onClick={() => dispatch({ type: 'event', choice: 'spring' })} />
+      <CampChoice icon={Coins} title="出售旧照片" text={`消耗 ${values.photoHpCost} 点生命，获得 ${values.photoGold} 枚旅币`} onClick={() => dispatch({ type: 'event', choice: 'bargain' })} />
     </div>
   </Overlay>;
 }
@@ -940,7 +956,7 @@ function BlackMarketView({ state, dispatch }) {
         <button className="side-shop-price" disabled={state.gold < offer.cost} onClick={() => setConfirming(offer)}><Coins />{state.gold < offer.cost ? `还差 ${offer.cost - state.gold}` : offer.cost}</button>
       </article>)}
     </div>
-    <button className="secondary memory-leave" onClick={() => dispatch({ type: 'blackMarketLeave' })}>不买，继续赶路</button>
+    <button className="secondary memory-leave" onClick={() => dispatch({ type: 'blackMarketLeave' })}>不买了，继续赶路</button>
     <SideShopConfirm good={confirming} gold={state.gold} onCancel={() => setConfirming(null)} onConfirm={() => { dispatch({ type: 'blackMarketBuy', id: confirming.id }); setConfirming(null); }} />
     {inspectingGear && <GearDetail state={state} item={inspectingGear} disabled hideAction onClose={() => setInspectingGear(null)} onEquip={() => {}} />}
   </Overlay>;
@@ -982,6 +998,7 @@ function SideStoryView({ state, dispatch }) {
 
 function SideShopPreview({ good, state, onClose }) {
   if (!good) return null;
+  if (good.kind === 'gear' && good.item) return <GearDetail state={state} item={good.item} disabled hideAction onClose={onClose} onEquip={() => {}} />;
   const previewCard = good.kind === 'card' ? rankedCardKey(good.key, skillRewardRank(state, good.key) + (good.rankBonus || 0)) : null;
   const buff = good.effect || {};
   const buffLines = [buff.energy ? `每场战斗开局能量 +${buff.energy}` : null, buff.block ? `每场战斗开局护盾 +${buff.block}` : null, buff.firstStrike ? `每场战斗首次伤害 +${buff.firstStrike}` : null].filter(Boolean);
@@ -1021,6 +1038,9 @@ function SideResolveView({ state, dispatch }) {
     setShopPreview(null);
     setShopConfirm(null);
   }, [scene?.storyId, scene?.kind]);
+  useEffect(() => {
+    if (scene?.kind === 'shop' && scene.goods?.some(good => good.kind === 'gear' && !good.item)) dispatch({ type: 'prepareSideShop' });
+  }, [scene, dispatch]);
   if (!scene) return null;
   const toggleCard = index => setSelectedCards(current => current.includes(index) ? current.filter(item => item !== index) : [...current, index].slice(0, scene.count || 0));
   const toggleGear = id => setSelectedGear(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id].slice(0, scene.count || 0));
@@ -1058,7 +1078,7 @@ function SideResolveView({ state, dispatch }) {
     {scene.kind === 'shop' && <div className="side-shop">
       {scene.goods.map(good => <article key={good.id} className={state.gold < good.cost ? 'locked' : ''}>
         <button className="side-shop-view" onClick={() => setShopPreview(good)} aria-label={`查看${good.label}`} title="查看商品详情">{good.kind === 'gear' ? <PackageOpen /> : good.kind === 'card' ? <BookOpen /> : <Sparkles />}</button>
-        <strong>{good.label}</strong>
+        <span className="side-shop-copy"><strong>{good.label}</strong>{good.kind === 'gear' && good.item && <small>{good.item.rarity} · Lv.{good.item.itemLevel || 1} · {itemLines(good.item).slice(0, 2).join(' · ')}</small>}</span>
         <button className="side-shop-price" disabled={state.gold < good.cost} onClick={() => setShopConfirm(good)}><Coins />{state.gold < good.cost ? `还差 ${good.cost - state.gold}` : good.cost}</button>
       </article>)}
       <button className="secondary side-leave" onClick={() => dispatch({ type: 'sideResolveLeave' })}>离开摊位</button>
@@ -1088,10 +1108,11 @@ function SideResolveView({ state, dispatch }) {
 
 function Camp({ state, dispatch }) {
   const pillowBattles = state.pillowBattles || 0;
+  const values = ambientEventValues(state);
   return <Overlay background={PIXEL_BACKGROUNDS[state.stage]} eyebrow="安全节点" title="亮灯的休息站" text="只能做一次选择，然后继续赶路。">
     <div className="camp-grid">
-      <CampChoice icon={Heart} title="在房车里小睡" text="回复最多 18 点生命" onClick={() => dispatch({ type: 'camp', choice: 'rest' })} />
-      <CampChoice icon={Shield} title="购买柔软靠枕" text={pillowBattles > 0 ? `仍可持续 ${pillowBattles} 场战斗 · 每回合获得 2 点护盾` : '30 旅币 · 接下来 3 场战斗，每回合获得 2 点护盾'} disabled={state.gold < 30 || state.pillowActive || pillowBattles > 0} onClick={() => dispatch({ type: 'camp', choice: 'relic' })} />
+      <CampChoice icon={Heart} title="在房车里小睡" text={`回复最多 ${values.campHeal} 点生命`} onClick={() => dispatch({ type: 'camp', choice: 'rest' })} />
+      <CampChoice icon={Shield} title="购买柔软靠枕" text={pillowBattles > 0 ? `仍可持续 ${pillowBattles} 场战斗 · 每回合获得 ${values.pillowBlock} 点护盾` : `${values.pillowCost} 旅币 · 接下来 ${values.pillowBattles} 场战斗，每回合获得 ${values.pillowBlock} 点护盾`} disabled={state.gold < values.pillowCost || state.pillowActive || pillowBattles > 0} onClick={() => dispatch({ type: 'camp', choice: 'relic' })} />
     </div>
   </Overlay>;
 }
@@ -1104,7 +1125,7 @@ function MemoryStation({ state, dispatch }) {
     for (const key of state.cardLibrary) counts.set(key, (counts.get(key) || 0) + 1);
     return [...counts.entries()]
       .filter(([key, count]) => count >= 2 && cardRank(key) < 10 && !key.endsWith('~gear'))
-      .sort(([left], [right]) => cardRank(left) - cardRank(right) || card(left).name.localeCompare(card(right).name, 'zh-CN'));
+      .sort(([left], [right]) => cardRank(right) - cardRank(left) || card(left).name.localeCompare(card(right).name, 'zh-CN'));
   }, [state.cardLibrary]);
   useEffect(() => () => window.clearTimeout(mergeTimer.current), []);
   const merge = key => {
@@ -1218,10 +1239,77 @@ function Overlay({ background, eyebrow, title, text, children, variant = '' }) {
   return <main className={`overlay ${variant}`}><div className="overlay-art pixel-art" style={{ backgroundImage: `url(${background || chapter0})` }} /><div className="overlay-shade" /><section className="overlay-sheet"><span className="eyebrow">{eyebrow}</span><h2>{title}</h2><p>{text}</p>{children}</section></main>;
 }
 
-function BattleReview({ entries, enemyName, onClose }) {
+function battleReviewPlainText(state) {
+  const enemy = enemyFor(state);
+  const stats = equipmentStats(state);
+  const encounterType = state.bossFight ? 'Boss' : state.elite ? '精英' : '普通';
+  const statLine = Object.entries(stats)
+    .filter(([, value]) => value)
+    .map(([key, value]) => `${AFFIX_LABELS[key] || key} +${value}`)
+    .join('，') || '无加成';
+  const deckCounts = state.deck.reduce((counts, key) => counts.set(key, (counts.get(key) || 0) + 1), new Map());
+  const deckLine = [...deckCounts].map(([key, count]) => {
+    const resolved = card(key);
+    return `${CARDS[resolved.baseKey].name} Lv.${resolved.rank}${count > 1 ? ` ×${count}` : ''}`;
+  }).join('，');
+  const specializationLines = (SPECIALIZATIONS[state.character] || []).map(route => {
+    const talents = route.nodes
+      .map(talent => ({ talent, rank: state.specializations?.[talent.id] || 0 }))
+      .filter(entry => entry.rank > 0)
+      .map(entry => `${entry.talent.name} Lv.${entry.rank}`);
+    return talents.length ? `${route.name}：${talents.join('，')}` : null;
+  }).filter(Boolean);
+  const equipmentLines = Object.entries(state.equipment || {}).map(([slot, id]) => {
+    const item = itemFor(state, id);
+    if (!item) return `${SLOT_LABELS[slot] || slot}：未装备`;
+    const effects = itemLines(item);
+    return `${SLOT_LABELS[slot] || slot}：${itemName(item)}，Lv.${item.itemLevel || 1} ${item.rarity}${effects.length ? `，${effects.join('，')}` : ''}`;
+  });
+  const temporaryEffects = [
+    state.pillowActive ? '软绒枕头开局护盾' : null,
+    state.sideBattleFirstStrike ? `支线首次伤害 +${state.sideBattleFirstStrike}` : null,
+  ].filter(Boolean);
+  return [
+    `Mistbound 战斗回顾（存档版本 ${VERSION}）`,
+    `章节：第 ${state.stage + 1} 章 ${CHAPTERS[state.stage]?.name || ''}，地图第 ${Math.max(0, state.mapRow) + 1} 步`,
+    `遭遇：${encounterType} · ${enemy.name}，结算时 ${state.enemy.hp}/${state.enemy.maxHp} 生命`,
+    `难度：${DIFFICULTIES[state.difficulty]?.name || state.difficulty}，${state.battleMode === 'auto' ? '自动出牌' : '手动出牌'}`,
+    `角色：${CHARACTERS[state.character]?.name || state.character} Lv.${state.level}，结算时 ${state.hp}/${state.maxHp} 生命，旅币 ${state.gold}`,
+    `装备汇总：${statLine}`,
+    `房车设施：暖灯厨房 Lv.${state.facilities?.kitchen || 0}，随车工坊 Lv.${state.facilities?.workshop || 0}，旅客房间 Lv.${state.facilities?.rooms || 0}`,
+    `临时效果：${temporaryEffects.join('，') || '无'}`,
+    '',
+    '【装备】',
+    ...equipmentLines,
+    '',
+    '【出战牌组】',
+    deckLine || '无',
+    '',
+    '【专精】',
+    ...(specializationLines.length ? specializationLines : ['未分配专精']),
+    '',
+    '【战斗日志】',
+    ...(state.battleLog || []),
+  ].join('\n');
+}
+
+function BattleReview({ state, onClose }) {
+  const entries = state.battleLog || [];
+  const enemyName = enemyFor(state).name;
+  const [showCopyText, setShowCopyText] = useState(false);
+  const copyField = useRef(null);
+  const reviewText = useMemo(() => battleReviewPlainText(state), [state]);
+  const selectCopyText = () => {
+    copyField.current?.focus();
+    copyField.current?.select();
+    copyField.current?.setSelectionRange(0, reviewText.length);
+  };
+  useEffect(() => {
+    if (showCopyText) selectCopyText();
+  }, [showCopyText]);
   return <div className="battle-review-backdrop" onClick={onClose}><section className="battle-review" role="dialog" aria-modal="true" aria-labelledby="battle-review-title" onClick={event => event.stopPropagation()}>
-    <header><div><span className="eyebrow">DREAM RECORD</span><h2 id="battle-review-title">战斗回顾</h2></div><button className="icon-button" onClick={onClose} aria-label="关闭战斗回顾"><X /></button></header>
-    <div className="battle-review-list">{entries.map((item, index) => <p className={item.startsWith('状态：') ? 'battle-status-line' : ''} key={`${item}-${index}`}><BattleLogLine text={item} enemyName={enemyName} /></p>)}</div>
+    <header><div><span className="eyebrow">DREAM RECORD</span><h2 id="battle-review-title">战斗回顾</h2></div><div className="battle-review-actions"><button className="battle-review-copy" onClick={() => setShowCopyText(current => !current)}>{showCopyText ? <BookOpen /> : <Copy />}<span>{showCopyText ? '返回日志' : '复制回顾'}</span></button><button className="icon-button" onClick={onClose} aria-label="关闭战斗回顾"><X /></button></div></header>
+    {showCopyText ? <div className="battle-review-manual-copy"><div><span>文本已全选，长按后选择“复制”。</span><button onClick={selectCopyText}><Copy />全选文本</button></div><textarea ref={copyField} value={reviewText} readOnly aria-label="可复制的完整战斗回顾" /></div> : <div className="battle-review-list">{entries.map((item, index) => <p className={item.startsWith('状态：') ? 'battle-status-line' : ''} key={`${item}-${index}`}><BattleLogLine text={item} enemyName={enemyName} /></p>)}</div>}
   </section></div>;
 }
 
@@ -1230,7 +1318,7 @@ function Finale({ won, state, onEnd, onRevive, onReviveWithGold }) {
   const sprite = enemySpriteProps(state);
   const cost = reviveCost(state);
   const canBuyRevive = state.gold >= cost;
-  return <main className={`finale ${won ? 'won' : 'lost'}`}><div className="finale-art pixel-art" style={{ backgroundImage: `url(${PIXEL_BACKGROUNDS[state.stage]})` }} />{!won && <div className={`finale-enemy pixel-art ${sprite.className}`} style={sprite.style} />}<div className="scene-vignette" /><section><span className="finale-character pixel-art" style={characterStyle(state.character, 1.8)} /><span className="eyebrow">JOURNEY PAUSED · 旅途受挫</span><h1>挑战失败</h1><p>“{CHARACTER_LINES[state.character].defeat}”</p><small>生命归零后可以复活回到房车。普通复活会遗失当前身上已装备的全部装备；旅币买活会保留身上装备、背包、卡牌、等级和章节进度。</small><div className="revive-warning"><AlertTriangle /><span>普通复活：身上装备掉光，背包装备保留。买活费用：{cost} 旅币。</span></div><div className="run-stats"><span>等级 <b>{state.level}</b></span><span>旅币 <b>{state.gold}</b></span><span>回合 <b>{state.totalTurns}</b></span></div><div className="finale-actions"><button className="primary" disabled={!canBuyRevive} onClick={onReviveWithGold}><Coins size={18} />{canBuyRevive ? `${cost} 旅币买活` : `买活还差 ${cost - state.gold}`}</button><button className="secondary" onClick={onRevive}><Heart size={18} />掉装备复活</button><button className="secondary" onClick={() => setReviewing(true)}><BookOpen size={18} />回顾战斗</button><button className="secondary" onClick={onEnd}><X size={18} />结束本局</button></div></section>{reviewing && <BattleReview entries={state.battleLog} enemyName={enemyFor(state).name} onClose={() => setReviewing(false)} />}</main>;
+  return <main className={`finale ${won ? 'won' : 'lost'}`}><div className="finale-art pixel-art" style={{ backgroundImage: `url(${PIXEL_BACKGROUNDS[state.stage]})` }} />{!won && <div className={`finale-enemy pixel-art ${sprite.className}`} style={sprite.style} />}<div className="scene-vignette" /><section><span className="finale-character pixel-art" style={characterStyle(state.character, 1.8)} /><span className="eyebrow">JOURNEY PAUSED · 旅途受挫</span><h1>挑战失败</h1><p>“{CHARACTER_LINES[state.character].defeat}”</p><small>生命归零后可以复活回到房车。普通复活会遗失当前身上已装备的全部装备；旅币买活会保留身上装备、背包、卡牌、等级和章节进度。</small><div className="revive-warning"><AlertTriangle /><span>普通复活：身上装备掉光，背包装备保留。买活费用：{cost} 旅币。</span></div><div className="run-stats"><span>等级 <b>{state.level}</b></span><span>旅币 <b>{state.gold}</b></span><span>回合 <b>{state.totalTurns}</b></span></div><div className="finale-actions"><button className="primary" disabled={!canBuyRevive} onClick={onReviveWithGold}><Coins size={18} />{canBuyRevive ? `${cost} 旅币买活` : `买活还差 ${cost - state.gold}`}</button><button className="secondary" onClick={onRevive}><Heart size={18} />掉装备复活</button><button className="secondary" onClick={() => setReviewing(true)}><BookOpen size={18} />回顾战斗</button><button className="secondary" onClick={onEnd}><X size={18} />结束本局</button></div></section>{reviewing && <BattleReview state={state} onClose={() => setReviewing(false)} />}</main>;
 }
 
 const SLOT_ICONS = { weapon: Swords, armor: Shirt, bag: Backpack, scarf: Wind, charm: Gem, decor: TentTree };
@@ -1250,10 +1338,11 @@ function GearArt({ baseKey, slot, Icon, empty = false }) {
   return <span className={`gear-icon ${style ? 'gear-art pixel-art' : 'gear-empty'}`} style={{ ...(style || {}), '--gear-accent': empty ? '#8a938a' : gearAccent(baseKey) }}><i className="gear-category"><Icon /></i></span>;
 }
 
-function GearRow({ item, equipped, onOpen, isNew = false }) {
+function GearRow({ item, equipped, onOpen, isNew = false, readOnly = false }) {
   const base = ITEMS[item.base], Icon = SLOT_ICONS[base.slot];
   const grantedSkill = item.skill ? card(item.skill) : null;
-  return <button className={`gear-card rarity-${item.rarity} ${equipped ? 'equipped' : ''}`} onClick={onOpen} title={`查看 ${itemName(item)} 详情`}>
+  const Element = readOnly ? 'div' : 'button';
+  return <Element className={`gear-card rarity-${item.rarity} ${equipped ? 'equipped' : ''}`} onClick={readOnly ? undefined : onOpen} title={readOnly ? undefined : `查看 ${itemName(item)} 详情`}>
     <GearArt baseKey={item.base} slot={base.slot} Icon={Icon} />
     <span className="gear-item-level">Lv.{item.itemLevel || 1} · {itemTier(item).name.replace('底材', '')}</span>
     <span className="gear-rarity">{item.rarity}</span>
@@ -1262,7 +1351,7 @@ function GearRow({ item, equipped, onOpen, isNew = false }) {
     {grantedSkill && <span className="gear-skill-label" aria-label={`自带技能：${grantedSkill.name}`}><Sparkles /><b>自带技能：{grantedSkill.name}</b></span>}
     {equipped && <span className="gear-equipped-badge" aria-label="已装备"><Check /></span>}
     {isNew && <span className="new-badge">NEW</span>}
-  </button>;
+  </Element>;
 }
 
 function AcquisitionModal({ entries, state, dispatch, onClose }) {
@@ -1294,10 +1383,10 @@ function AcquisitionModal({ entries, state, dispatch, onClose }) {
       <div className="acquisition-radiance" aria-hidden="true"><i /><i /><i /><i /><i /><i /></div>
       <span className="eyebrow">JOURNEY KEEPSAKE · 旅途收获</span>
       <h2 id="acquisition-title">{title}</h2>
-      <p>{single?.kind === 'card' ? '技能已收入候补，现在可以决定是否加入出战牌组。' : single?.kind === 'gear' ? '装备已放入背包，可以比较后决定是否换上。' : `共获得 ${entries.length} 件物品，请分别决定是否立即装备。`}</p>
+      <p>{single?.kind === 'card' ? '技能已收入候补，现在可以决定是否加入出战牌组。' : single?.directEquipChoice ? '购买前已经完成比较，现在可以决定是否直接换上。' : single?.kind === 'gear' ? '装备已放入背包，可以比较后决定是否换上。' : `共获得 ${entries.length} 件物品，请分别决定是否立即装备。`}</p>
       <div className="acquisition-risk"><AlertTriangle /><span><strong>非路标返回可能丢失</strong><small>暂不装备的技能或装备仍会留在收获中，但匆忙返回房车时可能随机遗失。</small></span></div>
       {cards.length > 0 && <div className="acquisition-cards">{renderedEntries.filter(({ entry }) => entry.kind === 'card').map(({ entry, id }, index) => <div className="acquisition-card" key={id} style={{ '--reveal-delay': `${index * 90}ms` }}><CardView cardKey={entry.key} compact /><strong>{card(entry.key).name}</strong><small>技能 · Lv.{cardRank(entry.key)}</small><div className="acquisition-item-actions"><button className={decisions[id] === 'equip' ? 'selected' : ''} onClick={() => { dispatch({ type: 'equipAcquired', kind: 'card', key: entry.key }); decide(id, 'equip'); }}><Check />加入出战</button><button className={decisions[id] === 'skip' ? 'selected risk' : 'risk'} onClick={() => decide(id, 'skip')}><X />暂不加入</button></div></div>)}</div>}
-      {gears.length > 0 && <div className="acquisition-gears">{renderedEntries.filter(({ entry }) => entry.kind === 'gear').map(({ entry, id }, index) => <div className="acquisition-gear" key={id} style={{ '--reveal-delay': `${(cards.length + index) * 90}ms` }}><GearRow item={entry.item} isNew onOpen={() => setComparingGear({ item: entry.item, id })} /><small>{entry.item.rarity}装备 · 已放入背包</small><div className="acquisition-item-actions"><button className={decisions[id] === 'equip' ? 'selected' : ''} onClick={() => setComparingGear({ item: entry.item, id })}><Scale />比较并装备</button><button className={decisions[id] === 'skip' ? 'selected risk' : 'risk'} onClick={() => decide(id, 'skip')}><X />暂不装备</button></div></div>)}</div>}
+      {gears.length > 0 && <div className="acquisition-gears">{renderedEntries.filter(({ entry }) => entry.kind === 'gear').map(({ entry, id }, index) => <div className="acquisition-gear" key={id} style={{ '--reveal-delay': `${(cards.length + index) * 90}ms` }}>{entry.directEquipChoice ? <><GearRow item={entry.item} isNew readOnly /><small>{entry.item.rarity}装备 · 已放入背包</small><div className="acquisition-item-actions"><button className={decisions[id] === 'equip' ? 'selected' : ''} onClick={() => { dispatch({ type: 'equipAcquired', kind: 'gear', key: entry.item.id }); decide(id, 'equip'); }}><Check />装备</button><button className={decisions[id] === 'skip' ? 'selected risk' : 'risk'} onClick={() => decide(id, 'skip')}><X />暂不装备</button></div></> : <><GearRow item={entry.item} isNew onOpen={() => setComparingGear({ item: entry.item, id })} /><small>{entry.item.rarity}装备 · 已放入背包</small><div className="acquisition-item-actions"><button className={decisions[id] === 'equip' ? 'selected' : ''} onClick={() => setComparingGear({ item: entry.item, id })}><Scale />比较并装备</button><button className={decisions[id] === 'skip' ? 'selected risk' : 'risk'} onClick={() => decide(id, 'skip')}><X />暂不装备</button></div></>}</div>)}</div>}
       <button className="primary acquisition-accept" disabled={pending > 0} onClick={onClose}><Check />{pending > 0 ? `还有 ${pending} 项未选择` : '完成'}</button>
       {comparisonItem && <GearDetail state={state} item={comparisonItem} disabled={false} onClose={() => setComparingGear(null)} onEquip={() => { dispatch({ type: 'equipAcquired', kind: 'gear', key: comparisonItem.id }); decide(comparingGear.id, 'equip'); setComparingGear(null); }} />}
     </section>
@@ -1349,12 +1438,56 @@ function GearSkillComparison({ label, skill }) {
   return <span className={skill ? '' : 'empty'}><small>{label}</small>{skill ? <><strong>{skill.name} · Lv.{skill.rank}</strong><p>{description(skill.key).join(' · ')}</p></> : <strong>无自带技能</strong>}</span>;
 }
 
-function WorkshopRow({ state, item, dispatch, onOpen }) {
+function upgradedItemPreview(item) {
+  if (!item || itemUpgradeCost(item) === null) return null;
+  const itemLevel = item.itemLevel < 21 ? 21 : 41;
+  const affixCount = item.affixes?.length || 0;
+  return { ...item, itemLevel, skillLevel: item.skill ? Math.min(10, 1 + Math.floor((itemLevel - 1) / 12) + (affixCount >= 3 ? 1 : 0)) : 0 };
+}
+
+function GearStatComparison({ beforeItem, afterItem }) {
+  const beforeStats = itemStats(beforeItem);
+  const afterStats = itemStats(afterItem);
+  const keys = [...new Set([...Object.keys(beforeStats), ...Object.keys(afterStats)])];
+  return <div className="gear-compare-table">{keys.map(key => {
+    const before = beforeStats[key] || 0;
+    const after = afterStats[key] || 0;
+    const delta = after - before;
+    return <div className="gear-compare-row" key={key}><span>{AFFIX_LABELS[key]}</span><b>{before}</b><i aria-hidden="true">→</i><b>{after}</b><em className={delta > 0 ? 'better' : delta < 0 ? 'worse' : 'same'}>{delta > 0 ? `+${delta}` : delta}</em></div>;
+  })}</div>;
+}
+
+function UpgradeItemConfirm({ state, item, onCancel, onConfirm }) {
+  const cost = itemUpgradeCost(item);
+  const preview = upgradedItemPreview(item);
+  if (!item || cost === null || !preview) return null;
+  const beforeSkill = item.skill ? card(rankedCardKey(item.skill, item.skillLevel || 1, true)) : null;
+  const afterSkill = preview.skill ? card(rankedCardKey(preview.skill, preview.skillLevel || 1, true)) : null;
+  return <div className="confirm-backdrop" onClick={onCancel}>
+    <section className="confirm-dialog upgrade-item-confirm" role="alertdialog" aria-modal="true" aria-labelledby="upgrade-item-title" onClick={event => event.stopPropagation()}>
+      <span className="confirm-icon"><TrendingUp /></span><small>升阶底材</small>
+      <h2 id="upgrade-item-title">升级「{itemName(item)}」？</h2>
+      <p>花费 {cost} 旅币，将物品等级提升到 Lv.{preview.itemLevel}。随机词条会随新底材刷新，下面为升阶后的属性预览。</p>
+      <div className="upgrade-item-cards">
+        <GearRow item={item} equipped={Object.values(state.equipment).includes(item.id)} readOnly />
+        <GearRow item={preview} equipped={Object.values(state.equipment).includes(item.id)} readOnly />
+      </div>
+      <div className="gear-detail-compare upgrade-item-compare">
+        <div className="gear-compare-heading"><span><small>升级前</small><strong>{itemTier(item).name} · Lv.{item.itemLevel || 1}</strong></span><span><small>升级后</small><strong>{itemTier(preview).name} · Lv.{preview.itemLevel}</strong></span></div>
+        <GearStatComparison beforeItem={item} afterItem={preview} />
+        <div className="gear-compare-skills"><GearSkillComparison label="当前技能" skill={beforeSkill} /><GearSkillComparison label="升阶后技能" skill={afterSkill} /></div>
+      </div>
+      <div className="confirm-actions"><button className="secondary" onClick={onCancel}>取消</button><button className="primary" disabled={state.gold < cost} onClick={onConfirm}>{state.gold < cost ? `还差 ${cost - state.gold} 旅币` : `确认升阶 ${cost} 旅币`}</button></div>
+    </section>
+  </div>;
+}
+
+function WorkshopRow({ state, item, dispatch, onOpen, onUpgrade }) {
   const equipped = Object.values(state.equipment).includes(item.id);
   const cost = rerollCost(item, state.facilities.workshop), value = salvageValue(item), upgradeCost = itemUpgradeCost(item);
   return <article className="workshop-card">
     <GearRow item={item} equipped={equipped} onOpen={onOpen} isNew={state.journeyNewItems?.includes(item.id)} />
-    <div className="workshop-card-actions"><button disabled={!item.affixes.length || state.gold < cost} onClick={() => dispatch({ type: 'reroll', key: item.id })}><Wrench />重抽属性<small>{cost} 旅币</small></button><button disabled={upgradeCost === null || state.gold < upgradeCost} onClick={() => dispatch({ type: 'upgradeItem', key: item.id })}><TrendingUp />升阶底材<small>{upgradeCost === null ? '已是精英' : `${upgradeCost} 旅币`}</small></button><button disabled={equipped} onClick={() => dispatch({ type: 'salvage', key: item.id })}><PackageOpen />拆解装备<small>获得 {value} 旅币</small></button></div>
+    <div className="workshop-card-actions"><button disabled={!item.affixes.length || state.gold < cost} onClick={() => dispatch({ type: 'reroll', key: item.id })}><Wrench />重抽属性<small>{cost} 旅币</small></button><button disabled={upgradeCost === null || state.gold < upgradeCost} onClick={() => onUpgrade(item.id)}><TrendingUp />升阶底材<small>{upgradeCost === null ? '已是精英' : `${upgradeCost} 旅币`}</small></button><button disabled={equipped} onClick={() => dispatch({ type: 'salvage', key: item.id })}><PackageOpen />拆解装备<small>获得 {value} 旅币</small></button></div>
   </article>;
 }
 
@@ -1428,14 +1561,14 @@ function SpecializationPanel({ state, dispatch }) {
   const discardDraft = () => setDraft({ ...(state.specializations || {}) });
   return <section className="specialization-panel">
     <header className="specialization-heading"><Sparkles /><span><strong>角色专精</strong><small>专精点主要通过升级获得；选择会永久记录，只有空白书签可以重置。</small></span><b>{available}<small>可用点数</small></b></header>
-    <div className="specialization-summary"><span>已投入 <b>{draftSpent}</b> / {MAX_SPECIALIZATION_POINTS}</span><span>等级点数 {Math.min(30, state.level)}</span>{state.specializationBonusPoints > 0 && <span>剧情奖励 +{state.specializationBonusPoints}</span>}</div>
-    <nav className="specialization-routes">{routes.map((entry, index) => <button key={entry.name} className={routeIndex === index ? 'active' : ''} style={{ '--route-color': entry.color }} onClick={() => setRouteIndex(index)}><strong>{entry.name}</strong><small>{entry.nodes.reduce((sum, talent) => sum + (draft[talent.id] || 0), 0)} / 20</small></button>)}</nav>
+    <div className="specialization-summary"><span>已投入 <b>{draftSpent}</b> / {MAX_SPECIALIZATION_POINTS}</span><span>等级点数 {Math.min(MAX_SPECIALIZATION_POINTS, state.level)}</span>{state.specializationBonusPoints > 0 && <span>剧情奖励 +{state.specializationBonusPoints}</span>}</div>
+    <nav className="specialization-routes">{routes.map((entry, index) => <button key={entry.name} className={routeIndex === index ? 'active' : ''} style={{ '--route-color': entry.color }} onClick={() => setRouteIndex(index)}><strong>{entry.name}</strong><small>{entry.nodes.reduce((sum, talent) => sum + (draft[talent.id] || 0), 0)} / {entry.nodes.reduce((sum, talent) => sum + talent.maxRank, 0)}</small></button>)}</nav>
     {route && <><div className="specialization-route-copy" style={{ '--route-color': route.color }}><strong>{CHARACTERS[state.character].name} · {route.name}</strong><p>{route.summary}</p></div>
       <div className="specialization-tree">{route.nodes.map((talent, index) => {
         const rank = draft[talent.id] || 0;
         const canInvest = canInvestSpecialization(draftState, draft, talent.id);
         return <button key={talent.id} className={`${rank > 0 ? 'invested' : ''} ${talent.maxRank === 1 ? 'keystone' : ''}`} style={{ '--route-color': route.color }} disabled={!canInvest} onClick={() => invest(talent)}>
-          <span className="specialization-node-rank">{rank}/{talent.maxRank}</span><span><strong>{talent.name}</strong><small>{talent.text}</small>{rank === 0 && talent.requires > 0 && <em>本路线投入 {talent.requires} 点后解锁</em>}</span>{index < route.nodes.length - 1 && <i aria-hidden="true" />}
+          <span className="specialization-node-rank">{rank}/{talent.maxRank}</span><span><strong>{talent.name}</strong><small>{specializationNodeText(talent, rank)}</small>{rank === 0 && talent.requires > 0 && <em>本路线投入 {talent.requires} 点后解锁</em>}</span>{index < route.nodes.length - 1 && <i aria-hidden="true" />}
         </button>;
       })}</div></>}
     <div className="specialization-actions"><button className="secondary" disabled={!pending} onClick={discardDraft}>撤销未确认</button><button className="primary" disabled={!pending} onClick={() => setConfirming(true)}>确认投入 {pending || 0} 点</button></div>
@@ -1521,6 +1654,7 @@ function Drawer({ state, dispatch, onClose, onRestart, initialTab = 'character' 
   const [tab, setTab] = useState(visibleInitialTab);
   const [selectedGear, setSelectedGear] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
+  const [upgradingGear, setUpgradingGear] = useState(null);
   const [debugOpen, setDebugOpen] = useState(false);
   const [seenTutorials, setSeenTutorials] = useState(readDrawerTutorials);
   const [tutorialTab, setTutorialTab] = useState(() => readDrawerTutorials()[initialTab] ? null : initialTab);
@@ -1535,6 +1669,7 @@ function Drawer({ state, dispatch, onClose, onRestart, initialTab = 'character' 
     }
     if (state.phase === 'hub' && ['bag', 'workshop', 'guests'].includes(next)) dispatch({ type: 'viewFeature', key: next });
     if (state.phase === 'hub' && next === 'specialization') dispatch({ type: 'viewSpecialization' });
+    if (['character', 'bag'].includes(next)) dispatch({ type: 'viewItemLibrary' });
     if (next === 'deck') dispatch({ type: 'viewCardLibrary' });
     setTab(next); setSelectedSlot(null);
     if (!seenTutorials[next]) setTutorialTab(next);
@@ -1553,10 +1688,11 @@ function Drawer({ state, dispatch, onClose, onRestart, initialTab = 'character' 
     {tab === 'bag' && <div className="inventory-list">{state.inventory.map(item => { const slot = ITEMS[item.base].slot; return <GearRow key={item.id} item={item} equipped={state.equipment[slot] === item.id} isNew={state.journeyNewItems?.includes(item.id)} onOpen={() => setSelectedGear(item.id)} />; })}{state.phase !== 'hub' && <p className="bag-hint">旅途中只能查看装备，返回房车后才能更换。</p>}</div>}
     {tab === 'deck' && <CardLibraryPanel state={state} dispatch={dispatch} />}
     {tab === 'specialization' && <SpecializationPanel state={state} dispatch={dispatch} />}
-    {tab === 'workshop' && <div className="workshop"><header><Wrench /><span><strong>房车工坊</strong><small>重抽属性会刷新随机词条；拆解会永久销毁装备。附带技能不会被重抽。</small></span><b><Coins />{state.gold}</b></header><FacilityUpgrades state={state} dispatch={dispatch} /><div className="workshop-items">{state.inventory.map(item => <WorkshopRow key={item.id} state={state} item={item} dispatch={dispatch} onOpen={() => setSelectedGear(item.id)} />)}</div></div>}
+    {tab === 'workshop' && <div className="workshop"><header><Wrench /><span><strong>房车工坊</strong><small>重抽属性会刷新随机词条；拆解会永久销毁装备。附带技能不会被重抽。</small></span><b><Coins />{state.gold}</b></header><FacilityUpgrades state={state} dispatch={dispatch} /><div className="workshop-items">{state.inventory.map(item => <WorkshopRow key={item.id} state={state} item={item} dispatch={dispatch} onOpen={() => setSelectedGear(item.id)} onUpgrade={setUpgradingGear} />)}</div></div>}
     {tab === 'guests' && <><CommissionBoard state={state} dispatch={dispatch} /><GuestRooms state={state} dispatch={dispatch} /></>}
     <button className="danger" onClick={onRestart}>放弃并重新开始</button>
     {selectedGear && itemFor(state, selectedGear) && <GearDetail state={state} item={itemFor(state, selectedGear)} disabled={state.phase !== 'hub'} onClose={() => setSelectedGear(null)} onEquip={() => { dispatch({ type: 'equip', key: selectedGear }); setSelectedGear(null); }} />}
+    {upgradingGear && itemFor(state, upgradingGear) && <UpgradeItemConfirm state={state} item={itemFor(state, upgradingGear)} onCancel={() => setUpgradingGear(null)} onConfirm={() => { dispatch({ type: 'upgradeItem', key: upgradingGear }); setUpgradingGear(null); }} />}
     {CHEATS_ENABLED && debugOpen && <DebugPanel state={state} dispatch={dispatch} onClose={() => setDebugOpen(false)} onLaunch={() => { setDebugOpen(false); onClose(); }} />}
     {tutorialTab && <div className="tutorial-backdrop drawer-tutorial"><section className="tutorial-card"><span>旅行屋指南</span><h2>{DRAWER_TUTORIALS[tutorialTab].title}</h2><p>{DRAWER_TUTORIALS[tutorialTab].text}</p><button className="primary" onClick={finishTutorial}>知道了</button></section></div>}
   </aside></div>;
@@ -1717,7 +1853,12 @@ function App() {
     const previousItemIds = new Set(previous.inventory.map(item => item.id));
     const debugAddedGearIds = new Set(state.pendingScene?.debugAddedGearIds || []);
     const battleRewardShown = previous.phase === 'combat' && state.phase === 'reward';
-    if (!battleRewardShown) state.inventory.filter(item => !previousItemIds.has(item.id) && !debugAddedGearIds.has(item.id)).forEach(item => acquired.push({ kind: 'gear', item }));
+    const directEquipLootIds = new Set(state.directEquipLootIds || []);
+    if (!battleRewardShown) state.inventory.filter(item => !previousItemIds.has(item.id) && !debugAddedGearIds.has(item.id)).forEach(item => acquired.push({
+      kind: 'gear',
+      item,
+      directEquipChoice: directEquipLootIds.has(item.id),
+    }));
     if (previous.phase === 'map' && state.phase === 'hub') {
       const currentItems = new Set(state.inventory.map(item => item.id));
       previous.inventory

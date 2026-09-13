@@ -30,39 +30,39 @@ const LATE_BUILDS = [
   { character: 'uncle', route: '洞察', affix: 'markedStrike', deck: [
     ['openingNote', 10], ['listen', 9], ['echo', 7], ['photoAlbum', 7], ['nova', 9],
     ['nightRide', 7], ['postcard', 7], ['exposeTruth', 3], ['silentAnswer', 1], ['homeboundMail', 1],
-  ], specializations: { uInsightGuard: 5, uInsightStrike: 5, uInsightBurst: 4, uInsightCalm: 5, uInsightTruth: 1, uFollowDamage: 5, uFollowGuard: 5 } },
+  ], specializations: { uInsightGuard: 15, uInsightStrike: 15, uInsightBurst: 10, uInsightCalm: 10, uInsightTruth: 1, uFollowDamage: 9 } },
   { character: 'uncle', route: '书信', affix: 'recycleGuard', deck: [
     ['quick', 10], ['postcard', 10], ['rainPromise', 9], ['unsent', 8], ['returnedLetter', 8],
     ['nightRide', 7], ['homeboundMail', 3], ['finalPlatform', 2], ['guard', 10], ['focus', 10],
-  ], specializations: { uLetterDamage: 5, uLetterGuard: 5, uLetterReturn: 4, uLetterKeep: 5, uLetterHome: 1, uFollowDamage: 5, uFollowGuard: 5 } },
+  ], specializations: { uLetterDamage: 15, uLetterGuard: 15, uLetterReturn: 10, uLetterKeep: 10, uLetterHome: 1, uFollowDamage: 9 } },
   { character: 'uncle', route: '追问', affix: 'skillPower', deck: [
     ['openingNote', 10], ['mark', 10], ['listen', 9], ['echo', 8], ['nova', 9],
     ['postcard', 8], ['nightRide', 8], ['finalPlatform', 2], ['silentAnswer', 2], ['focus', 10],
-  ], specializations: { uFollowDamage: 5, uFollowGuard: 5, uFollowHeal: 4, uFollowDepth: 5, uFollowAnswer: 1, uInsightGuard: 5, uInsightStrike: 5 } },
+  ], specializations: { uFollowDamage: 15, uFollowGuard: 15, uFollowHeal: 10, uFollowDepth: 10, uFollowAnswer: 1, uInsightGuard: 9 } },
   { character: 'gaigai', route: '暖意', affix: 'warmthPower', deck: [
     ['leech', 10], ['mend', 10], ['tea', 9], ['sharedUmbrella', 9], ['warmThermos', 5],
     ['steadyTea', 3], ['goodnight', 3], ['morningCall', 3], ['lastWarmth', 1], ['rewriteEnding', 1],
-  ], specializations: { gWarmGain: 5, gWarmDamage: 5, gWarmShield: 4, gWarmKeep: 5, gWarmForever: 1, gDrinkHeal: 5, gDrinkGuard: 5 } },
+  ], specializations: { gWarmGain: 15, gWarmDamage: 15, gWarmShield: 10, gWarmKeep: 10, gWarmForever: 1, gDrinkHeal: 9 } },
   { character: 'gaigai', route: '热饮', affix: 'overflowBlock', deck: [
     ['mend', 10], ['tea', 10], ['sharedUmbrella', 9], ['warmThermos', 8], ['steadyTea', 7],
     ['goodnight', 5], ['lastWarmth', 2], ['leech', 10], ['morningCall', 3], ['focus', 10],
-  ], specializations: { gDrinkHeal: 5, gDrinkGuard: 5, gDrinkOverflow: 4, gDrinkReserve: 5, gDrinkMorning: 1, gWarmGain: 5, gWarmDamage: 5 } },
+  ], specializations: { gDrinkHeal: 15, gDrinkGuard: 15, gDrinkOverflow: 10, gDrinkReserve: 10, gDrinkMorning: 1, gWarmGain: 9 } },
   { character: 'gaigai', route: '留灯', affix: 'rhythmPower', deck: [
     ['leech', 10], ['tea', 10], ['sharedUmbrella', 9], ['goodnight', 7], ['steadyTea', 6],
     ['postcard', 9], ['morningCall', 5], ['rewriteEnding', 2], ['homeboundMail', 2], ['focus', 10],
-  ], specializations: { gLightDamage: 5, gLightGuard: 5, gLightHeal: 4, gLightSpark: 5, gLightAllNight: 1, gWarmGain: 5, gWarmDamage: 5 } },
+  ], specializations: { gLightDamage: 15, gLightGuard: 15, gLightHeal: 10, gLightSpark: 10, gLightAllNight: 1, gWarmGain: 9 } },
   { character: 'xiaoshuai', route: '反击', affix: 'counterPower', deck: [
     ['riposte', 10], ['fortify', 10], ['sharedUmbrella', 9], ['blanket', 3], ['stayAwhile', 5],
     ['tideTurn', 5], ['nightWatch', 3], ['finalPlatform', 1], ['keepTheLight', 1], ['rewriteEnding', 1],
-  ], specializations: { xCounterKeep: 5, xCounterReflect: 5, xCounterMend: 4, xCounterEdge: 5, xCounterStorm: 1, xTidePower: 5, xTideGuard: 5 } },
+  ], specializations: { xCounterKeep: 15, xCounterReflect: 15, xCounterMend: 10, xCounterEdge: 10, xCounterStorm: 1, xTidePower: 9 } },
   { character: 'xiaoshuai', route: '潮汐', affix: 'tidePower', deck: [
     ['fortify', 10], ['riposte', 10], ['sharedUmbrella', 9], ['pageMarker', 8], ['blanket', 6],
     ['stayAwhile', 6], ['tideTurn', 8], ['nightWatch', 4], ['keepTheLight', 2], ['focus', 10],
-  ], specializations: { xTidePower: 5, xTideGuard: 5, xTideStrike: 4, xTideReturn: 5, xTideMoon: 1, xCounterKeep: 5, xCounterReflect: 5 } },
+  ], specializations: { xTidePower: 20, xTideGuard: 10, xTideStrike: 20, xTideReturn: 0, xTideMoon: 1, xCounterKeep: 9 } },
   { character: 'xiaoshuai', route: '清醒梦', affix: 'lucidGuard', deck: [
     ['risk', 10], ['lucidDoor', 9], ['rewriteEnding', 5], ['morningCall', 6], ['tideTurn', 8],
     ['nightWatch', 5], ['fortify', 10], ['stayAwhile', 6], ['keepTheLight', 2], ['focus', 10],
-  ], specializations: { xLucidPain: 5, xLucidPatch: 5, xLucidEdge: 4, xLucidFocus: 5, xLucidWake: 1, xTidePower: 5, xTideGuard: 5 } },
+  ], specializations: { xLucidPain: 15, xLucidPatch: 15, xLucidEdge: 10, xLucidFocus: 10, xLucidWake: 1, xTidePower: 9 } },
 ];
 
 function chooseTacticalCard(state) {
@@ -171,8 +171,8 @@ function prepareBattle({ seed, difficulty, character, build = null, stage, row, 
     state.maxHp = CHARACTERS[character].maxHp + (state.level - 1) * 6;
     state.deck = [...EARLY_DECKS[character]];
   } else {
-    state.level = 30;
-    state.maxHp = CHARACTERS[character].maxHp + 29 * 6;
+    state.level = 60;
+    state.maxHp = CHARACTERS[character].maxHp + 59 * 6;
     state.deck = build.deck.map(([key, rank]) => rankedCardKey(key, rank));
     state.specializations = { ...build.specializations };
     equipLateSet(state, gear, build);
