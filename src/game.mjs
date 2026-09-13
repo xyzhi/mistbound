@@ -1666,7 +1666,7 @@ export function newRun(seed = Date.now() >>> 0, battleMode = 'manual', difficult
   const selectedCharacter = CHARACTERS[character] ? character : 'uncle';
   const startingHp = CHARACTERS[selectedCharacter].maxHp || 70;
   const starterDeck = [...CHARACTERS[selectedCharacter].starter];
-  const s = { version: VERSION, seed: seed >>> 0, mapSeed: seed >>> 0, character: selectedCharacter, warmth: 0, traitUsed: false, coreRewardMisses: 0, specializations: {}, specializationBonusPoints: 0, specializationSeen: false, specializationResetTokens: 0, specializationResetQuestDone: false, specializationStoryRewards: [], magicHouseCooldowns: {}, mysteryResult: null, lastMysteryResult: null, blackMarketOffers: null, mainStory: null, mainStorySeen: [], sideStory: null, sidePromises: [], sideStorySeen: [], sideStoryQueue: [], sideChapterTriggers: [0, 0, 0, 0, 0, 0], criticalSideQuests: criticalQuestDefaults(), pendingScene: null, sideBuffs: [], sideBattleFirstStrike: 0, namelessClues: [], featureSeen: { bag: false, workshop: false, guests: false }, workshopUnlocked: false, difficulty: selectedDifficulty, battleMode: battleMode === 'manual' ? 'manual' : 'auto', tutorialDone: battleMode !== 'manual', phase: 'hub', stage: 0, unlocked: 0, clears: [0, 0, 0, 0, 0, 0], guestRewards: [false, false, false, false, false, false], chapterCheckpoints: [-1, -1, -1, -1, -1, -1], level: 1, xp: 0, nextXp: 45, hp: 70, maxHp: 70, gold: 0, facilities: { kitchen: 0, workshop: 0, rooms: 0 }, commissionClaims: { battles: 0, steps: 0, stories: 0 }, stepsTraveled: 0, pillowBattles: 0, pillowActive: false, elite: false, bossFight: false, foe: 0, checkpointRow: -1, mapRow: -1, currentNode: null, visited: [], unsecuredLoot: [], unsecuredCards: [], journeyCardDrops: [], journeyNewItems: [], journeyNewCards: [], inventory, equipment: { weapon: 'gear-1', armor: 'gear-2', bag: null, scarf: null, charm: null, decor: null }, nextItemId: 3, lastLoot: null, lastLoots: [], lastLevelUp: null, cardLibrary: [...starterDeck], deck: starterDeck, log: [], battleLog: [], played: 0, totalTurns: 0, victories: 0 };
+  const s = { version: VERSION, seed: seed >>> 0, mapSeed: seed >>> 0, character: selectedCharacter, warmth: 0, traitUsed: false, coreRewardMisses: 0, specializations: {}, specializationBonusPoints: 0, specializationSeen: false, specializationResetTokens: 0, specializationResetQuestDone: false, specializationStoryRewards: [], magicHouseCooldowns: {}, mysteryResult: null, lastMysteryResult: null, blackMarketOffers: null, mainStory: null, mainStorySeen: [], sideStory: null, sidePromises: [], sideStorySeen: [], sideStoryQueue: [], sideChapterTriggers: [0, 0, 0, 0, 0, 0], criticalSideQuests: criticalQuestDefaults(), pendingScene: null, sideBuffs: [], sideBattleFirstStrike: 0, namelessClues: [], featureSeen: { bag: false, workshop: false, guests: false, waypoint: false }, workshopUnlocked: false, difficulty: selectedDifficulty, battleMode: battleMode === 'manual' ? 'manual' : 'auto', tutorialDone: battleMode !== 'manual', phase: 'hub', stage: 0, unlocked: 0, clears: [0, 0, 0, 0, 0, 0], guestRewards: [false, false, false, false, false, false], chapterCheckpoints: [-1, -1, -1, -1, -1, -1], level: 1, xp: 0, nextXp: 45, hp: 70, maxHp: 70, gold: 0, facilities: { kitchen: 0, workshop: 0, rooms: 0 }, commissionClaims: { battles: 0, steps: 0, stories: 0 }, stepsTraveled: 0, pillowBattles: 0, pillowActive: false, elite: false, bossFight: false, foe: 0, checkpointRow: -1, mapRow: -1, currentNode: null, visited: [], unsecuredLoot: [], unsecuredCards: [], journeyCardDrops: [], journeyNewItems: [], journeyNewCards: [], inventory, equipment: { weapon: 'gear-1', armor: 'gear-2', bag: null, scarf: null, charm: null, decor: null }, nextItemId: 3, lastLoot: null, lastLoots: [], lastLevelUp: null, cardLibrary: [...starterDeck], deck: starterDeck, log: [], battleLog: [], played: 0, totalTurns: 0, victories: 0 };
   s.hp = startingHp; s.maxHp = startingHp;
   s.turn = 1; s.energy = 3; s.block = 0; s.nextBlock = 0; s.weak = 0; s.healingSuppression = 0;
   s.lastCardSchool = null; s.lastCardMode = null; s.schoolChain = 0; s.rhythmTriggers = 0; s.recycleTriggered = false; s.healDrawTriggered = false; s.lucidFocusTriggered = false; s.lucidCharge = 0; s.counterTriggers = 0;
@@ -1869,7 +1869,7 @@ export function transition(state, action) {
     return s;
   }
   if (action.type === 'viewFeature' && s.phase === 'hub') {
-    if (!['bag', 'workshop', 'guests'].includes(action.key)) return state;
+    if (!['bag', 'workshop', 'guests', 'waypoint'].includes(action.key)) return state;
     s.featureSeen[action.key] = true;
     return s;
   }
@@ -2539,6 +2539,23 @@ export function transition(state, action) {
     log(s, `拆解「${itemName(instance)}」，回收 ${value} 枚旅币。`);
     return s;
   }
+  if (action.type === 'bulkSalvage' && s.phase === 'hub') {
+    if (!Array.isArray(action.ids) || action.ids.length > 200 || action.ids.some(id => typeof id !== 'string')) return state;
+    const requested = new Set(action.ids);
+    const equipped = new Set(Object.values(s.equipment).filter(Boolean));
+    const sold = s.inventory.filter(item => requested.has(item.id) && !equipped.has(item.id));
+    if (!sold.length) return state;
+    const soldIds = new Set(sold.map(item => item.id));
+    const value = sold.reduce((sum, item) => sum + salvageValue(item), 0);
+    s.inventory = s.inventory.filter(item => !soldIds.has(item.id));
+    s.unsecuredLoot = (s.unsecuredLoot || []).filter(id => !soldIds.has(id));
+    s.journeyNewItems = (s.journeyNewItems || []).filter(id => !soldIds.has(id));
+    if (soldIds.has(s.lastLoot)) s.lastLoot = null;
+    s.lastLoots = (s.lastLoots || []).filter(id => !soldIds.has(id));
+    s.gold += value;
+    log(s, `批量售卖 ${sold.length} 件装备，回收 ${value} 枚旅币。`);
+    return s;
+  }
   if (action.type === 'claimGuestReward' && s.phase === 'hub') {
     const stage = action.stage;
     if (!Number.isInteger(stage) || stage < 0 || stage >= GUESTS.length || s.clears[stage] < 3 || s.guestRewards[stage]) return state;
@@ -2951,12 +2968,13 @@ export function restore(raw) {
     if (s.blackMarketOffers === undefined) s.blackMarketOffers = null;
     if (s.lastLevelUp === undefined) s.lastLevelUp = null;
     if (s.workshopUnlocked === undefined) s.workshopUnlocked = (s.chapterCheckpoints || []).some(row => row >= 19) || (s.phase === 'checkpoint' && s.mapRow === 19);
+    if (s.featureSeen && s.featureSeen.waypoint === undefined) s.featureSeen.waypoint = false;
     const int = (n, min, max) => Number.isInteger(n) && n >= min && n <= max;
     const validCards = a => Array.isArray(a) && a.length <= 300 && a.every(k => typeof k === 'string' && /^[a-zA-Z]+(?:\+(?:[2-9]|10)?)?(?:~gear)?$/.test(k) && CARDS[cardBaseKey(k)]);
     if (!s || s.version !== VERSION || typeof s.tutorialDone !== 'boolean' || !CHARACTERS[s.character] || !int(s.warmth, 0, 1000000) || typeof s.traitUsed !== 'boolean' || !int(s.coreRewardMisses, 0, 4) || !DIFFICULTIES[s.difficulty] || !['auto', 'manual'].includes(s.battleMode) || !['hub', 'map', 'combat', 'reward', 'camp', 'memory', 'loadout', 'blackMarket', 'negative', 'mystery', 'checkpoint', 'event', 'mainStory', 'sideStory', 'sideResolve', 'lost'].includes(s.phase)) return null;
     if (!validSpecializationAllocation(s, s.specializations) || !int(s.specializationBonusPoints, 0, MAX_SPECIALIZATION_POINTS) || typeof s.specializationSeen !== 'boolean' || !int(s.specializationResetTokens, 0, 1) || typeof s.specializationResetQuestDone !== 'boolean') return null;
     if (!Array.isArray(s.specializationStoryRewards) || s.specializationStoryRewards.length > 3 || !s.specializationStoryRewards.every(stage => [1, 3, 5].includes(stage)) || new Set(s.specializationStoryRewards).size !== s.specializationStoryRewards.length) return null;
-    if (!s.featureSeen || !['bag', 'workshop', 'guests'].every(key => typeof s.featureSeen[key] === 'boolean') || typeof s.workshopUnlocked !== 'boolean') return null;
+    if (!s.featureSeen || !['bag', 'workshop', 'guests', 'waypoint'].every(key => typeof s.featureSeen[key] === 'boolean') || typeof s.workshopUnlocked !== 'boolean') return null;
     if (s.mysteryResult !== null && !MYSTERY_STATIONS.some(station => station.type === s.mysteryResult)) return null;
     if (s.lastMysteryResult !== null && !MYSTERY_STATIONS.some(station => station.type === s.lastMysteryResult)) return null;
     const validMainStory = scene => scene === null || (scene && int(scene.stage, 0, MAIN_STORY.length - 1) && ['intro', 'boss', 'ending'].includes(scene.beat) && (scene.variant === null || ['hidden', 'complete', 'fragmented'].includes(scene.variant)));

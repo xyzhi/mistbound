@@ -117,11 +117,13 @@ test('三名角色拥有不同初始牌组并贯穿存档', () => {
 
 test('房车功能的新标签分别记录已读状态', () => {
   const state = newRun(801, 'manual');
-  assert.deepEqual(state.featureSeen, { bag: false, workshop: false, guests: false });
+  assert.deepEqual(state.featureSeen, { bag: false, workshop: false, guests: false, waypoint: false });
   const bagSeen = transition(state, { type: 'viewFeature', key: 'bag' });
-  assert.deepEqual(bagSeen.featureSeen, { bag: true, workshop: false, guests: false });
+  assert.deepEqual(bagSeen.featureSeen, { bag: true, workshop: false, guests: false, waypoint: false });
   const workshopSeen = transition(bagSeen, { type: 'viewFeature', key: 'workshop' });
-  assert.deepEqual(workshopSeen.featureSeen, { bag: true, workshop: true, guests: false });
+  assert.deepEqual(workshopSeen.featureSeen, { bag: true, workshop: true, guests: false, waypoint: false });
+  const waypointSeen = transition(workshopSeen, { type: 'viewFeature', key: 'waypoint' });
+  assert.equal(waypointSeen.featureSeen.waypoint, true);
   const traveling = leaveHub(workshopSeen);
   assert.equal(transition(traveling, { type: 'viewFeature', key: 'guests' }), traveling);
 });
@@ -818,6 +820,20 @@ test('房车工坊可以重抽随机词条并拆解闲置装备', () => {
   const salvaged = transition(rerolled, { type: 'salvage', key: 'gear-3' });
   assert.equal(salvaged.gold, 82);
   assert.equal(itemFor(salvaged, 'gear-3'), null);
+});
+
+test('批量售卖只处理指定的未穿戴装备', () => {
+  const state = newRun(31101);
+  const plain = { id: 'gear-3', base: 'emberCharm', itemLevel: 1, rarity: '普通', affixes: [], skill: null, skillLevel: 0 };
+  const skilled = { id: 'gear-4', base: 'flowerPostcard', itemLevel: 1, rarity: '普通', affixes: [], skill: 'postcard', skillLevel: 1 };
+  state.inventory.push(plain, skilled);
+  state.nextItemId = 5;
+  const beforeGold = state.gold;
+  const sold = transition(state, { type: 'bulkSalvage', ids: [plain.id, skilled.id, state.equipment.weapon] });
+  assert.equal(itemFor(sold, plain.id), null);
+  assert.equal(itemFor(sold, skilled.id), null);
+  assert.ok(itemFor(sold, state.equipment.weapon));
+  assert.equal(sold.gold, beforeGold + salvageValue(plain) + salvageValue(skilled));
 });
 
 test('房车设施提供永久成长并影响恢复与重抽费用', () => {
